@@ -12,7 +12,7 @@ import authRoutes from "./routes/authRoutes.js";
 
 // Load environment variables
 dotenv.config({
-  path: "./server/.env",
+  path: "./Backend/server/.env",
 });
 
 // Needed because this project uses ES modules, where
