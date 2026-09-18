@@ -1,39 +1,22 @@
-
+import dns from "node:dns";
 import mongoose from "mongoose";
+
+dns.setServers(["192.168.1.1"]);
 
 const connectDB = async () => {
   try {
-    // --------------------------------------------------
-    // CHECK MONGO URI
-    // --------------------------------------------------
-
     if (!process.env.MONGO_URI) {
-      console.error(
-        "MongoDB Error: MONGO_URI is not defined in .env"
-      );
-
+      console.error("MongoDB Error: MONGO_URI is not defined");
       process.exit(1);
     }
 
-    // --------------------------------------------------
-    // CONNECT TO MONGODB
-    // --------------------------------------------------
+    await mongoose.connect(process.env.MONGO_URI);
 
-    await mongoose.connect(
-      process.env.MONGO_URI
-    );
-
-    console.log("MongoDB Connected");
-
+    console.log("MongoDB Atlas Connected Successfully");
   } catch (error) {
-    console.error(
-      "MongoDB Error:",
-      error.message
-    );
-
+    console.error("MongoDB Connection Error:", error.message);
     process.exit(1);
   }
 };
 
 export default connectDB;
-
