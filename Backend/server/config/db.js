@@ -20,14 +20,21 @@ const connectDB = async () => {
 };
 
 export default connectDB;*/
+import dns from "node:dns";
 import mongoose from "mongoose";
+
+// ======================================================
+// DNS FIX
+// Some networks/ISPs (and some serverless environments)
+// don't reliably resolve MongoDB Atlas SRV records with
+// the default resolver. Using public DNS (Google/Cloudflare)
+// fixes this both locally and on Vercel.
+// ======================================================
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 // ======================================================
 // SERVERLESS-FRIENDLY CONNECTION CACHING
 // ======================================================
-// Vercel har request pe naya function invoke kar sakta hai,
-// isliye connection ko globally cache karte hain taake
-// baar baar naya connection na bane.
 
 let cached = global._mongooseConnection;
 
