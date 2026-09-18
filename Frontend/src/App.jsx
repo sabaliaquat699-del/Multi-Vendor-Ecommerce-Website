@@ -1,10 +1,6 @@
-import { Routes, Route } from "react-router-dom";
-
-// Components
 import Navbar from "./Components/Navbar";
 import Footer from "./Components/Footer";
 
-// Pages
 import Home from "./Pages/Home";
 import Products from "./Pages/Products";
 import ProductDetails from "./Pages/ProductDetails";
