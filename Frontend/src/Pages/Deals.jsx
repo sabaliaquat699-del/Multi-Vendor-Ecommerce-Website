@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import useCartStore from "../store/cartStore";
+import useCartStore from "../store/cartstore";
 
 const formatDate = (date) =>
   new Date(date).toLocaleDateString("en-US", {

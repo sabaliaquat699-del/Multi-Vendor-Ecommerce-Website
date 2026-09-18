@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import useCartStore from "../store/cartStore";
+import useCartStore from "../store/cartstore";
 
 function Navbar() {
   const cart = useCartStore((state) => state.cart);

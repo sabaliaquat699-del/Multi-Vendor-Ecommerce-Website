@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import useCartStore from "../store/cartStore";
+import useCartStore from "../store/cartstore";
 
 function Products() {
   // ==========================================
