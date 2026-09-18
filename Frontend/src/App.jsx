@@ -1,26 +1,26 @@
 import { Routes, Route } from "react-router-dom";
 
 // Components
-import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
+import Navbar from "./Components/Navbar";
+import Footer from "./Components/Footer";
 
 // Pages
-import Home from "./pages/Home";
-import Products from "./pages/Products";
-import ProductDetails from "./pages/ProductDetails";
-import Categories from "./pages/Categories";
-import Stores from "./pages/Stores";
-import Cart from "./pages/Cart";
-import Checkout from "./pages/Checkout";
-import OrderSuccess from "./pages/OrderSuccess";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import VendorDashboard from "./pages/VendorDashboard";
-import AdminDashboard from "./pages/AdminDashboard";
-import Deals from "./pages/Deals";
-import NotFound from "./pages/NotFound";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
+import Home from "./Pages/Home";
+import Products from "./Pages/Products";
+import ProductDetails from "./Pages/ProductDetails";
+import Categories from "./Pages/Categories";
+import Stores from "./Pages/Stores";
+import Cart from "./Pages/Cart";
+import Checkout from "./Pages/Checkout";
+import OrderSuccess from "./Pages/OrderSuccess";
+import Login from "./Pages/Login";
+import Register from "./Pages/Register";
+import VendorDashboard from "./Pages/VendorDashboard";
+import AdminDashboard from "./Pages/AdminDashboard";
+import Deals from "./Pages/Deals";
+import NotFound from "./Pages/NotFound";
+import ForgotPassword from "./Pages/ForgotPassword";
+import ResetPassword from "./Pages/ResetPassword";
 
 function App() {
   return (
@@ -111,6 +111,7 @@ function App() {
             element={<ResetPassword />}
           />
 
+          {/* Vendor */}
           <Route
             path="/vendor"
             element={<VendorDashboard />}
@@ -121,6 +122,7 @@ function App() {
             element={<VendorDashboard />}
           />
 
+          {/* Admin */}
           <Route
             path="/admin"
             element={<AdminDashboard />}
@@ -131,6 +133,7 @@ function App() {
             element={<AdminDashboard />}
           />
 
+          {/* 404 */}
           <Route
             path="*"
             element={<NotFound />}
