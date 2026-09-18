@@ -76,10 +76,22 @@ app.use(
 // DATABASE
 // ======================================================
 
-connectDB().catch((err) => {
-  console.error("Failed to connect to MongoDB:", err.message);
-});
+// ======================================================
+// DATABASE — wait for connection before handling requests
+// ======================================================
 
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("Database connection failed:", error.message);
+    res.status(503).json({
+      success: false,
+      message: "Database connection failed. Please try again shortly.",
+    });
+  }
+});
 // ======================================================
 // AUTH ROUTES
 // ======================================================
