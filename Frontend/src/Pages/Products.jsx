@@ -1,7 +1,7 @@
-
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import useCartStore from "../store/cartstore";
+import { API_URL } from "../config";
 
 function Products() {
   // ==========================================
@@ -117,7 +117,7 @@ function Products() {
         }
 
         const response = await fetch(
-          `http://localhost:5000/api/products?${params.toString()}`
+          `${API_URL}/api/products?${params.toString()}`
         );
 
         if (!response.ok) {
@@ -1008,4 +1008,3 @@ function Products() {
 }
 
 export default Products;
-

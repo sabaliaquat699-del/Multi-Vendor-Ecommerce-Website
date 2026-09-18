@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import useCartStore from "../store/cartstore";
+import { API_URL } from "../config";
 
 const formatDate = (date) =>
   new Date(date).toLocaleDateString("en-US", {
@@ -19,7 +20,7 @@ function Deals() {
   useEffect(() => {
     const fetchDeals = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/deals");
+        const response = await fetch(`${API_URL}/api/deals`);
 
         if (!response.ok) {
           throw new Error("Could not load deals");

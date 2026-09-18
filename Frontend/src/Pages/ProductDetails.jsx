@@ -1,7 +1,7 @@
-
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import useCartStore from "../store/cartstore";
+import { API_URL } from "../config";
 
 function ProductDetails() {
   const { id } = useParams();
@@ -70,7 +70,7 @@ function ProductDetails() {
         }
 
         const response = await fetch(
-          `http://localhost:5000/api/products/${numericId}`
+          `${API_URL}/api/products/${numericId}`
         );
 
         if (!response.ok) {
@@ -146,7 +146,7 @@ function ProductDetails() {
         }
 
         const response = await fetch(
-          `http://localhost:5000/api/reviews/product/${numericId}`
+          `${API_URL}/api/reviews/product/${numericId}`
         );
 
         if (!response.ok) {
@@ -300,7 +300,7 @@ function ProductDetails() {
       const numericId = Number(id);
 
       const response = await fetch(
-        "http://localhost:5000/api/reviews",
+        `${API_URL}/api/reviews`,
         {
           method: "POST",
 
@@ -409,7 +409,7 @@ function ProductDetails() {
       setReviewError("");
 
       const response = await fetch(
-        `http://localhost:5000/api/reviews/${reviewId}`,
+        `${API_URL}/api/reviews/${reviewId}`,
         {
           method: "DELETE",
         }
@@ -1446,4 +1446,3 @@ function ProductDetails() {
 }
 
 export default ProductDetails;
-
