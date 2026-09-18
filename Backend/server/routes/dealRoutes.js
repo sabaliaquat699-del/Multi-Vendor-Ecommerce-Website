@@ -1,8 +1,9 @@
-const express = require("express");
+import express from "express";
+import { getAllDeals, createDeal } from "../Controllers/dealController.js";
+
 const router = express.Router();
-const { getAllDeals, createDeal } = require("../Controllers/dealController");
 
 router.get("/", getAllDeals);
 router.post("/", createDeal);
 
-module.exports = router;
+export default router;
