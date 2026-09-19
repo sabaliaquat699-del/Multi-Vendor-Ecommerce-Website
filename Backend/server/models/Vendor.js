@@ -97,6 +97,24 @@ const vendorSchema = new mongoose.Schema(
     },
 
     // ==========================
+    // Email verification fields
+    // ==========================
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    verificationToken: {
+      type: String,
+      select: false,
+    },
+
+    verificationTokenExpire: {
+      type: Date,
+      select: false,
+    },
+
+    // ==========================
     // Password reset fields
     // ==========================
     resetPasswordToken: {

@@ -67,6 +67,27 @@ const customerSchema = new mongoose.Schema(
     },
 
     // ==========================
+    // Email verification fields
+    // Account stays isVerified:false (inactive) until the
+    // user clicks the link sent to their email. Login is
+    // blocked in the controller while this is false.
+    // ==========================
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    verificationToken: {
+      type: String,
+      select: false,
+    },
+
+    verificationTokenExpire: {
+      type: Date,
+      select: false,
+    },
+
+    // ==========================
     // Password reset fields
     // ==========================
     resetPasswordToken: {

@@ -16,6 +16,21 @@ export const forgotPasswordLimiter = rateLimit({
 });
 
 // ======================================================
+// resendVerificationLimiter
+// Max 5 requests per 15 minutes per IP on /resend-verification.
+// ======================================================
+export const resendVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many verification requests. Please try again later.",
+  },
+});
+
+// ======================================================
 // loginLimiter
 // Max 10 login attempts per 15 minutes per IP.
 // This is a coarse, IP-based limit that works ALONGSIDE

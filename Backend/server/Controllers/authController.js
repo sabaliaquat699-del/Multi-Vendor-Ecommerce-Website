@@ -10,6 +10,7 @@ import sendEmail from "../utils/sendEmail.js";
 // ======================================================
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const VERIFICATION_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Requires: 1 uppercase, 1 lowercase, 1 number, min 8 chars
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -39,6 +40,7 @@ const formatCustomer = (user) => ({
   address: user.address,
   city: user.city,
   country: user.country,
+  isVerified: user.isVerified,
 });
 
 const formatVendor = (user) => ({
@@ -57,6 +59,7 @@ const formatVendor = (user) => ({
   businessName: user.businessName,
   businessAddress: user.businessAddress,
   vendorStatus: user.vendorStatus,
+  isVerified: user.isVerified,
 });
 
 // ======================================================
@@ -82,6 +85,48 @@ const findUserByEmail = async (email, withSelect = "") => {
   if (user) return { user, role: "vendor", Model: Vendor };
 
   return { user: null, role: null, Model: null };
+};
+
+// ======================================================
+// Helper: generate + save a hashed verification token on
+// the given user doc, then email the raw (unhashed) token
+// as a link. Reused by register() and resendVerification().
+// ======================================================
+const createAndSendVerificationEmail = async (user) => {
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+  user.verificationToken = hashedToken;
+  user.verificationTokenExpire = Date.now() + VERIFICATION_TOKEN_EXPIRY_MS;
+  await user.save({ validateBeforeSave: false });
+
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+  const verifyUrl = `${clientUrl}/verify-email/${rawToken}`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2>Verify your email</h2>
+      <p>Thanks for signing up on NextTech! Please confirm your email address
+      to activate your account. This link will expire in <strong>24 hours</strong>.</p>
+      <p>
+        <a href="${verifyUrl}"
+           style="display:inline-block;padding:12px 24px;background:#171717;
+                  color:#fff;text-decoration:none;border-radius:8px;">
+          Verify Email
+        </a>
+      </p>
+      <p>If you didn't create this account, you can safely ignore this email.</p>
+      <p style="color:#888;font-size:12px;">
+        Or copy this link: ${verifyUrl}
+      </p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: user.email,
+    subject: "Verify your NextTech account",
+    html,
+  });
 };
 
 // ======================================================
@@ -111,9 +156,6 @@ export const register = async (req, res) => {
     // string for email/password. Without this, MongoDB
     // queries built from these values could be manipulated
     // with objects like { "$ne": null } (NoSQL injection).
-    // Since Mongoose casts most of this automatically for
-    // .find() with a schema, this is an extra explicit
-    // guard at the entry point.
     // ----------------------------------------------------
     if (typeof email !== "string" || typeof password !== "string") {
       return res.status(400).json({
@@ -172,10 +214,10 @@ export const register = async (req, res) => {
       city: city?.trim() || "",
       country: country?.trim() || "",
       profileImage,
+      isVerified: false, // account is INACTIVE until email is verified
     };
 
     let savedUser;
-    let token;
 
     if (finalRole === "vendor") {
       savedUser = await Vendor.create({
@@ -186,26 +228,27 @@ export const register = async (req, res) => {
         businessAddress: businessAddress?.trim() || "",
         vendorStatus: "pending",
       });
-
-      token = generateToken(savedUser, "vendor");
-
-      return res.status(201).json({
-        success: true,
-        message:
-          "Registered successfully. Your vendor account is pending admin approval.",
-        token,
-        user: formatVendor(savedUser),
-      });
+    } else {
+      savedUser = await Customer.create(baseData);
     }
 
-    savedUser = await Customer.create(baseData);
-    token = generateToken(savedUser, "customer");
+    // ---- Send verification email (best-effort) ----
+    try {
+      await createAndSendVerificationEmail(savedUser);
+    } catch (emailError) {
+      console.error("SEND VERIFICATION EMAIL ERROR:", emailError);
+      // Account is still created — user can request a new link
+      // via /api/auth/resend-verification if this email failed.
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Registered successfully.",
-      token,
-      user: formatCustomer(savedUser),
+      requiresVerification: true,
+      message:
+        finalRole === "vendor"
+          ? "Registered successfully! Please check your email to verify your account. Your vendor account will also need admin approval before you can start selling."
+          : "Registered successfully! Please check your email to verify your account before logging in.",
+      email: normalizedEmail,
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -232,16 +275,130 @@ export const register = async (req, res) => {
 };
 
 // ======================================================
+// VERIFY EMAIL
+// POST /api/auth/verify-email/:token
+//
+// Hashes the raw token from the URL and compares it against
+// the hashed token stored in DB (same pattern as password
+// reset) — the raw token is never stored anywhere. On success,
+// the account is activated AND a login JWT is issued so the
+// frontend can drop the user straight into their dashboard.
+// ======================================================
+export const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification link.",
+      });
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    let user = await Customer.findOne({
+      verificationToken: hashedToken,
+      verificationTokenExpire: { $gt: Date.now() },
+    }).select("+verificationToken +verificationTokenExpire");
+
+    let role = "customer";
+
+    if (!user) {
+      user = await Vendor.findOne({
+        verificationToken: hashedToken,
+        verificationTokenExpire: { $gt: Date.now() },
+      }).select("+verificationToken +verificationTokenExpire");
+      role = "vendor";
+    }
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This verification link is invalid or has expired. Please request a new one.",
+      });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpire = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    const token_ = generateToken(user, role);
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully! You are now logged in.",
+      token: token_,
+      user: role === "vendor" ? formatVendor(user) : formatCustomer(user),
+    });
+  } catch (error) {
+    console.error("VERIFY EMAIL ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while verifying email.",
+    });
+  }
+};
+
+// ======================================================
+// RESEND VERIFICATION EMAIL
+// POST /api/auth/resend-verification
+//
+// Always returns the same generic message regardless of
+// whether the email exists or is already verified — this
+// prevents email enumeration, same pattern as forgotPassword.
+// ======================================================
+export const resendVerification = async (req, res) => {
+  const genericResponse = {
+    success: true,
+    message:
+      "If an account with that email exists and is not yet verified, a new verification link has been sent.",
+  };
+
+  try {
+    const { email } = req.body;
+
+    if (typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const { user } = await findUserByEmail(normalizedEmail);
+
+    if (user && !user.isVerified) {
+      try {
+        await createAndSendVerificationEmail(user);
+      } catch (emailError) {
+        console.error("RESEND VERIFICATION EMAIL ERROR:", emailError);
+      }
+    }
+
+    return res.status(200).json(genericResponse);
+  } catch (error) {
+    console.error("RESEND VERIFICATION ERROR:", error);
+    return res.status(200).json(genericResponse);
+  }
+};
+
+// ======================================================
 // LOGIN
 // POST /api/auth/login
 //
 // SECURITY: implements per-account lockout on top of the
-// IP-based rate limiter in rateLimitMiddleware.js.
-// - After MAX_FAILED_ATTEMPTS wrong passwords, the account
-//   is locked for LOCK_DURATION_MS, regardless of which IP
-//   is trying — this stops distributed brute force against
-//   ONE specific account.
-// - A successful login resets the counter.
+// IP-based rate limiter in rateLimitMiddleware.js, PLUS an
+// email-verification gate. Order of checks matters:
+//   1) account lock check
+//   2) password check (wrong password -> always generic 401,
+//      regardless of verification status, to avoid leaking
+//      whether an email is registered/verified)
+//   3) only AFTER password is confirmed correct do we check
+//      isVerified, so an attacker guessing emails learns
+//      nothing without already knowing the password.
 // ======================================================
 export const login = async (req, res) => {
   try {
@@ -263,14 +420,12 @@ export const login = async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    const { user, role, Model } = await findUserByEmail(
+    const { user, role } = await findUserByEmail(
       normalizedEmail,
       "+password +failedLoginAttempts +lockUntil"
     );
 
     if (!user) {
-      // Same generic message as "wrong password" below —
-      // never reveal whether the email exists.
       return res.status(401).json({
         success: false,
         message: "Invalid email or password.",
@@ -289,12 +444,11 @@ export const login = async (req, res) => {
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
-      // ---- Increment failed attempts ----
       user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
 
       if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
         user.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
-        user.failedLoginAttempts = 0; // reset counter once locked
+        user.failedLoginAttempts = 0;
       }
 
       await user.save({ validateBeforeSave: false });
@@ -305,11 +459,23 @@ export const login = async (req, res) => {
       });
     }
 
-    // ---- Successful login: reset lockout state ----
+    // ---- Correct password from here on: reset lockout state ----
     if (user.failedLoginAttempts > 0 || user.lockUntil) {
       user.failedLoginAttempts = 0;
       user.lockUntil = null;
       await user.save({ validateBeforeSave: false });
+    }
+
+    // ---- Email verification gate ----
+    // Account stays inactive until the user clicks the
+    // verification link sent to their inbox.
+    if (!user.isVerified) {
+      return res.status(403).json({
+        success: false,
+        notVerified: true,
+        message:
+          "Please verify your email before logging in. Check your inbox for the verification link, or request a new one.",
+      });
     }
 
     const token = generateToken(user, role);

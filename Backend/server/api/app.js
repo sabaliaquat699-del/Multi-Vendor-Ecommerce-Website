@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -10,6 +11,7 @@ import Product from "../models/Product.js";
 import reviewRoutes from "../routes/reviewRoutes.js";
 import authRoutes from "../routes/authRoutes.js";
 import dealRoutes from "../routes/dealRoutes.js";
+import { mongoSanitize, preventHpp, xssClean } from "../Middleware/securityMiddleware.js";
 
 // ======================================================
 // ENVIRONMENT VARIABLES
@@ -18,7 +20,6 @@ import dealRoutes from "../routes/dealRoutes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// .env file ab ek folder upar hai (server/.env), isliye ../
 dotenv.config({
   path: path.join(__dirname, "..", ".env"),
 });
@@ -30,6 +31,7 @@ const app = express();
 // ======================================================
 
 app.use(helmet());
+app.use(compression());
 
 // ======================================================
 // CORS
@@ -56,10 +58,18 @@ app.use(
 );
 
 // ======================================================
-// JSON
+// JSON + BODY SIZE LIMIT
 // ======================================================
 
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
+
+// ======================================================
+// NOSQL INJECTION / HPP / XSS GUARDS
+// ======================================================
+
+app.use(mongoSanitize);
+app.use(preventHpp);
+app.use(xssClean);
 
 // ======================================================
 // UPLOADS
@@ -71,10 +81,6 @@ app.use(
   "/uploads",
   express.static(path.join(__dirname, "..", "uploads"))
 );
-
-// ======================================================
-// DATABASE
-// ======================================================
 
 // ======================================================
 // DATABASE — wait for connection before handling requests
@@ -92,18 +98,13 @@ app.use(async (req, res, next) => {
     });
   }
 });
+
 // ======================================================
-// AUTH ROUTES
+// ROUTES
 // ======================================================
 
 app.use("/api/auth", authRoutes);
-
-
-
 app.use("/api/reviews", reviewRoutes);
-
-
-
 app.use("/api/deals", dealRoutes);
 
 app.get("/api/products", async (req, res) => {
@@ -196,7 +197,6 @@ app.get("/api/products/:id", async (req, res) => {
     });
   }
 });
-
 
 app.get("/", (req, res) => {
   res.json({

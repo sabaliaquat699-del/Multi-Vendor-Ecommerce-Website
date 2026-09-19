@@ -14,6 +14,12 @@ function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Shown when the backend blocks login because the
+  // account's email hasn't been verified yet.
+  const [notVerified, setNotVerified] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -25,6 +31,8 @@ function Login() {
     try {
       setLoading(true);
       setError("");
+      setNotVerified(false);
+      setResendMessage("");
 
       const response = await fetch(
         `${API_URL}/api/auth/login`,
@@ -43,6 +51,9 @@ function Login() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
+        if (data.notVerified) {
+          setNotVerified(true);
+        }
         throw new Error(data.message || "Login failed");
       }
 
@@ -61,6 +72,37 @@ function Login() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!email.trim()) {
+      setResendMessage("Please enter your email address above first.");
+      return;
+    }
+
+    try {
+      setResendLoading(true);
+      setResendMessage("");
+
+      const response = await fetch(
+        `${API_URL}/api/auth/resend-verification`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim() }),
+        }
+      );
+
+      const data = await response.json();
+      setResendMessage(
+        data.message ||
+          "If an account with that email exists, a new verification link has been sent."
+      );
+    } catch {
+      setResendMessage("Something went wrong. Please try again.");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -87,8 +129,27 @@ function Login() {
 
           {/* Error */}
           {error && (
-            <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-600">
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-600">
               {error}
+            </div>
+          )}
+
+          {/* Resend verification block — only shown when
+              the backend flagged this account as unverified */}
+          {notVerified && (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-700">
+              <p>Didn't get the email?</p>
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resendLoading}
+                className="mt-1 font-semibold underline underline-offset-2 disabled:opacity-60"
+              >
+                {resendLoading ? "Sending..." : "Resend verification email"}
+              </button>
+              {resendMessage && (
+                <p className="mt-2 text-amber-700/80">{resendMessage}</p>
+              )}
             </div>
           )}
 
@@ -113,6 +174,10 @@ function Login() {
                   setEmail(e.target.value);
                   if (error) {
                     setError("");
+                  }
+                  if (notVerified) {
+                    setNotVerified(false);
+                    setResendMessage("");
                   }
                 }}
                 autoComplete="email"

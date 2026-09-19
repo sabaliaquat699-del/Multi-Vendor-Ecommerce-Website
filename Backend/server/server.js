@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -9,6 +10,7 @@ import connectDB from "./config/db.js";
 import Product from "./models/Product.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import { mongoSanitize, preventHpp, xssClean } from "./Middleware/securityMiddleware.js";
 
 // ======================================================
 // ENVIRONMENT VARIABLES
@@ -17,7 +19,6 @@ import authRoutes from "./routes/authRoutes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Local .env file
 dotenv.config({
   path: path.join(__dirname, ".env"),
 });
@@ -29,13 +30,12 @@ const app = express();
 // ======================================================
 
 app.use(helmet());
+app.use(compression());
 
 // ======================================================
 // CORS
 // ======================================================
 
-// Agar .env mein CLIENT_URL diya hai to use bhi list mein add kar lo,
-// warna default dono common Vite ports allow karo.
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
@@ -45,7 +45,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Postman / server-to-server requests (no origin) allow karo
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -58,10 +57,20 @@ app.use(
 );
 
 // ======================================================
-// JSON
+// JSON + BODY SIZE LIMIT
 // ======================================================
 
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
+
+// ======================================================
+// NOSQL INJECTION / HPP / XSS GUARDS
+// Must run AFTER express.json() so req.body actually
+// exists by the time they inspect it.
+// ======================================================
+
+app.use(mongoSanitize);
+app.use(preventHpp);
+app.use(xssClean);
 
 // ======================================================
 // UPLOADS
@@ -120,7 +129,6 @@ app.get("/api/products", async (req, res) => {
 
     const query = {};
 
-    // Search
     if (search) {
       const searchRegex = {
         $regex: search,
@@ -136,7 +144,6 @@ app.get("/api/products", async (req, res) => {
       ];
     }
 
-    // Category
     if (
       category &&
       category.toLowerCase() !== "all"
@@ -147,7 +154,6 @@ app.get("/api/products", async (req, res) => {
       };
     }
 
-    // Sort
     let sortOption = {
       _id: -1,
     };
@@ -166,7 +172,6 @@ app.get("/api/products", async (req, res) => {
       };
     }
 
-    // Total products
     const totalProducts =
       await Product.countDocuments(query);
 
@@ -174,7 +179,6 @@ app.get("/api/products", async (req, res) => {
       totalProducts / limit
     );
 
-    // Products
     const products = await Product.find(query)
       .sort(sortOption)
       .skip((page - 1) * limit)
@@ -292,10 +296,6 @@ let deals = [
   },
 ];
 
-// ======================================================
-// SALE STATUS
-// ======================================================
-
 const getSaleStatus = (
   startDate,
   endDate
@@ -312,10 +312,6 @@ const getSaleStatus = (
 
   return "active";
 };
-
-// ======================================================
-// GET ALL DEALS
-// ======================================================
 
 app.get("/api/deals", async (req, res) => {
   try {
@@ -376,10 +372,6 @@ app.get("/api/deals", async (req, res) => {
     });
   }
 });
-
-// ======================================================
-// CREATE A NEW DEAL
-// ======================================================
 
 app.post("/api/deals", async (req, res) => {
   try {
@@ -446,10 +438,6 @@ app.post("/api/deals", async (req, res) => {
   }
 });
 
-// ======================================================
-// ROOT ROUTE
-// ======================================================
-
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -457,10 +445,6 @@ app.get("/", (req, res) => {
       "Electronic Marketplace API is running",
   });
 });
-
-// ======================================================
-// SERVER
-// ======================================================
 
 const PORT =
   process.env.SERVER_PORT ||

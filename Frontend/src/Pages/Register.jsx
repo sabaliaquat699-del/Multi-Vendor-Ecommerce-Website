@@ -1,11 +1,12 @@
 ﻿import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { Eye, EyeOff, User, Store, Zap, Upload, X } from "lucide-react";
+import { Eye, EyeOff, User, Store, Zap, Upload, X, MailCheck } from "lucide-react";
+import { API_URL } from "../config";
 
 function Register() {
   const navigate = useNavigate();
-  const { login, user } = useAuth();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
 
   // "Become a Seller" links here as /register?role=vendor,
@@ -14,7 +15,6 @@ function Register() {
     searchParams.get("role") === "vendor" ? "vendor" : "customer"
   );
 
-  // Keep the tab in sync if the URL changes while this page is open
   useEffect(() => {
     if (searchParams.get("role") === "vendor") {
       setRole("vendor");
@@ -38,8 +38,6 @@ function Register() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Address is now shared by BOTH roles (matches backend schema
-  // where both Customer and Vendor have an `address` field)
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
@@ -49,12 +47,18 @@ function Register() {
   const [businessName, setBusinessName] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
 
-  // Profile image state
-  const [profileImage, setProfileImage] = useState(null); // actual File object
-  const [profileImagePreview, setProfileImagePreview] = useState(""); // preview URL
+  const [profileImage, setProfileImage] = useState(null);
+  const [profileImagePreview, setProfileImagePreview] = useState("");
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Shown after a successful register call, instead of
+  // auto-logging in (account is inactive until verified).
+  const [registered, setRegistered] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
 
   const handleImageChange = (event) => {
     const file = event.target.files[0];
@@ -103,8 +107,6 @@ function Register() {
       setLoading(true);
       setError("");
 
-      // Using FormData instead of JSON because we may be
-      // sending a file (profileImage) alongside text fields.
       const formData = new FormData();
       formData.append("firstName", firstName.trim());
       formData.append("lastName", lastName.trim());
@@ -123,18 +125,12 @@ function Register() {
         formData.append("businessAddress", businessAddress.trim());
       }
 
-      // Only attach the file if the user actually picked one —
-      // the field name here ("profileImage") MUST match
-      // upload.single("profileImage") on the backend route.
       if (profileImage) {
         formData.append("profileImage", profileImage);
       }
 
-      const response = await fetch("http://localhost:5000/api/auth/register", {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
         method: "POST",
-        // NOTE: do NOT set Content-Type manually here — the
-        // browser sets the correct multipart/form-data boundary
-        // automatically when the body is a FormData object.
         body: formData,
       });
 
@@ -144,13 +140,11 @@ function Register() {
         throw new Error(data.message || "Registration failed");
       }
 
-      login(data.user, data.token);
-
-      if (data.user.role === "vendor") {
-        navigate("/vendor");
-      } else {
-        navigate("/");
-      }
+      // Account created but NOT active yet — it needs email
+      // verification before the user can log in. Show a
+      // confirmation screen instead of auto-logging in.
+      setRegisteredEmail(email.trim());
+      setRegistered(true);
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
@@ -158,10 +152,83 @@ function Register() {
     }
   };
 
+  const handleResend = async () => {
+    try {
+      setResendLoading(true);
+      setResendMessage("");
+
+      const response = await fetch(`${API_URL}/api/auth/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: registeredEmail }),
+      });
+
+      const data = await response.json();
+      setResendMessage(
+        data.message || "A new verification link has been sent."
+      );
+    } catch {
+      setResendMessage("Something went wrong. Please try again.");
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   const inputClass =
     "w-full h-12 px-4 border border-gray-300 rounded-xl outline-none text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition";
 
   const labelClass = "block text-sm font-semibold text-gray-700 mb-1.5";
+
+  // ------------------------------------------------------
+  // "Check your email" confirmation screen — shown right
+  // after a successful register() call.
+  // ------------------------------------------------------
+  if (registered) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-6 py-14">
+        <div className="w-full max-w-md">
+          <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm text-center">
+            <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
+              <MailCheck size={28} className="text-green-600" />
+            </div>
+
+            <h2 className="text-xl font-bold text-gray-900">
+              Check your email
+            </h2>
+
+            <p className="text-gray-500 mt-2 text-sm">
+              We've sent a verification link to{" "}
+              <strong>{registeredEmail}</strong>. Please verify your account
+              before logging in
+              {role === "vendor"
+                ? " — your vendor account will also need admin approval before you can start selling."
+                : "."}
+            </p>
+
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resendLoading}
+              className="mt-5 text-sm font-semibold text-gray-900 underline underline-offset-2 disabled:opacity-60"
+            >
+              {resendLoading ? "Sending..." : "Didn't get it? Resend email"}
+            </button>
+
+            {resendMessage && (
+              <p className="mt-2 text-xs text-gray-500">{resendMessage}</p>
+            )}
+
+            <Link
+              to="/login"
+              className="block mt-6 text-sm text-gray-500 hover:text-gray-900"
+            >
+              Back to login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -265,7 +332,6 @@ function Register() {
           )}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            {/* Profile Image Upload — shared by both roles */}
             <div>
               <label className={labelClass}>Profile Photo (optional)</label>
               <div className="flex items-center gap-4">
@@ -397,8 +463,6 @@ function Register() {
               </div>
             </div>
 
-            {/* Address — now shown for BOTH customer and vendor,
-                since both models store a general `address` field */}
             <div>
               <label className={labelClass}>Address (optional)</label>
               <input

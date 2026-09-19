@@ -18,6 +18,7 @@ const Checkout = lazy(() => import("./Pages/Checkout"));
 const OrderSuccess = lazy(() => import("./Pages/OrderSuccess"));
 const Login = lazy(() => import("./Pages/Login"));
 const Register = lazy(() => import("./Pages/Register"));
+const VerifyEmail = lazy(() => import("./Pages/VerifyEmail"));
 const VendorDashboard = lazy(() => import("./Pages/VendorDashboard"));
 const AdminDashboard = lazy(() => import("./Pages/AdminDashboard"));
 const Deals = lazy(() => import("./Pages/Deals"));
@@ -113,6 +114,12 @@ function App() {
             <Route
               path="/register"
               element={<Register />}
+            />
+
+            {/* Email Verification */}
+            <Route
+              path="/verify-email/:token"
+              element={<VerifyEmail />}
             />
 
             {/* Forgot Password */}
