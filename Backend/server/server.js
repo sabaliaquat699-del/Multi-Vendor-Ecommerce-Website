@@ -10,6 +10,7 @@ import connectDB from "./config/db.js";
 import Product from "./models/Product.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 import { mongoSanitize, preventHpp, xssClean } from "./Middleware/securityMiddleware.js";
 
 // ======================================================
@@ -92,6 +93,7 @@ connectDB();
 // ======================================================
 
 app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 
 // ======================================================
 // REVIEW ROUTES

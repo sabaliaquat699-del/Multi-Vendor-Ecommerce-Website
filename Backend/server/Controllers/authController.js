@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import Customer from "../models/Customer.js";
 import Vendor from "../models/Vendor.js";
+import Admin from "../models/Admin.js";
 import sendEmail from "../utils/sendEmail.js";
 
 // ======================================================
@@ -12,8 +13,10 @@ const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const VERIFICATION_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Requires: 1 uppercase, 1 lowercase, 1 number, min 8 chars
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+
+// NEW: frontend ka default URL (Vite 5174 par chal raha hai)
+const DEFAULT_CLIENT_URL = "http://localhost:5174";
 
 // ======================================================
 // GENERATE TOKEN
@@ -62,20 +65,30 @@ const formatVendor = (user) => ({
   isVerified: user.isVerified,
 });
 
+const formatAdmin = (user) => ({
+  id: user._id,
+  role: "admin",
+  firstName: user.firstName,
+  lastName: user.lastName,
+  email: user.email,
+  isVerified: user.isVerified,
+});
+
 // ======================================================
-// Helper: check email across both collections
+// Helper: check email across all three collections
 // ======================================================
 const emailExistsAnywhere = async (email) => {
-  const [existingCustomer, existingVendor] = await Promise.all([
+  const [existingCustomer, existingVendor, existingAdmin] = await Promise.all([
     Customer.findOne({ email }),
     Vendor.findOne({ email }),
+    Admin.findOne({ email }),
   ]);
-  return Boolean(existingCustomer || existingVendor);
+  return Boolean(existingCustomer || existingVendor || existingAdmin);
 };
 
 // ======================================================
-// Helper: find a user (customer or vendor) by email,
-// optionally including hidden fields via `withSelect`.
+// Helper: find a user (customer, vendor, or admin) by
+// email, optionally including hidden fields via `withSelect`.
 // ======================================================
 const findUserByEmail = async (email, withSelect = "") => {
   let user = await Customer.findOne({ email }).select(withSelect);
@@ -83,6 +96,9 @@ const findUserByEmail = async (email, withSelect = "") => {
 
   user = await Vendor.findOne({ email }).select(withSelect);
   if (user) return { user, role: "vendor", Model: Vendor };
+
+  user = await Admin.findOne({ email }).select(withSelect);
+  if (user) return { user, role: "admin", Model: Admin };
 
   return { user: null, role: null, Model: null };
 };
@@ -100,7 +116,7 @@ const createAndSendVerificationEmail = async (user) => {
   user.verificationTokenExpire = Date.now() + VERIFICATION_TOKEN_EXPIRY_MS;
   await user.save({ validateBeforeSave: false });
 
-  const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+  const clientUrl = process.env.CLIENT_URL || DEFAULT_CLIENT_URL;
   const verifyUrl = `${clientUrl}/verify-email/${rawToken}`;
 
   const html = `
@@ -127,11 +143,24 @@ const createAndSendVerificationEmail = async (user) => {
     subject: "Verify your NextTech account",
     html,
   });
+
+  // NEW: email chali gayi, terminal mein confirm karein
+  console.log("VERIFICATION EMAIL SENT TO:", user.email);
+
+  // NEW: testing ke liye link terminal mein (production mein print nahi hoga)
+  if (process.env.NODE_ENV !== "production") {
+    console.log("VERIFY LINK:", verifyUrl);
+  }
 };
 
 // ======================================================
 // REGISTER
 // POST /api/auth/register
+//
+// NOTE: `role` from the client is only ever mapped to
+// "vendor" or "customer" below — there is no code path
+// here that can create an "admin" account. Admins are
+// created exclusively via server/scripts/createAdmin.js.
 // ======================================================
 export const register = async (req, res) => {
   try {
@@ -151,12 +180,6 @@ export const register = async (req, res) => {
       businessAddress,
     } = req.body;
 
-    // ----------------------------------------------------
-    // TYPE SAFETY — reject anything that isn't a plain
-    // string for email/password. Without this, MongoDB
-    // queries built from these values could be manipulated
-    // with objects like { "$ne": null } (NoSQL injection).
-    // ----------------------------------------------------
     if (typeof email !== "string" || typeof password !== "string") {
       return res.status(400).json({
         success: false,
@@ -171,7 +194,6 @@ export const register = async (req, res) => {
       });
     }
 
-    // ---- Password complexity ----
     if (!PASSWORD_REGEX.test(password)) {
       return res.status(400).json({
         success: false,
@@ -214,7 +236,7 @@ export const register = async (req, res) => {
       city: city?.trim() || "",
       country: country?.trim() || "",
       profileImage,
-      isVerified: false, // account is INACTIVE until email is verified
+      isVerified: false,
     };
 
     let savedUser;
@@ -232,13 +254,14 @@ export const register = async (req, res) => {
       savedUser = await Customer.create(baseData);
     }
 
-    // ---- Send verification email (best-effort) ----
     try {
       await createAndSendVerificationEmail(savedUser);
     } catch (emailError) {
-      console.error("SEND VERIFICATION EMAIL ERROR:", emailError);
-      // Account is still created — user can request a new link
-      // via /api/auth/resend-verification if this email failed.
+      console.error(
+        "SEND VERIFICATION EMAIL ERROR:",
+        emailError.code,
+        emailError.message
+      );
     }
 
     return res.status(201).json({
@@ -277,12 +300,7 @@ export const register = async (req, res) => {
 // ======================================================
 // VERIFY EMAIL
 // POST /api/auth/verify-email/:token
-//
-// Hashes the raw token from the URL and compares it against
-// the hashed token stored in DB (same pattern as password
-// reset) — the raw token is never stored anywhere. On success,
-// the account is activated AND a login JWT is issued so the
-// frontend can drop the user straight into their dashboard.
+// (Admins never go through this — they're pre-verified.)
 // ======================================================
 export const verifyEmail = async (req, res) => {
   try {
@@ -345,10 +363,6 @@ export const verifyEmail = async (req, res) => {
 // ======================================================
 // RESEND VERIFICATION EMAIL
 // POST /api/auth/resend-verification
-//
-// Always returns the same generic message regardless of
-// whether the email exists or is already verified — this
-// prevents email enumeration, same pattern as forgotPassword.
 // ======================================================
 export const resendVerification = async (req, res) => {
   const genericResponse = {
@@ -370,11 +384,22 @@ export const resendVerification = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
     const { user } = await findUserByEmail(normalizedEmail);
 
+    // NEW: terminal mein saaf nazar aaye ke email kyun gayi ya nahi gayi
+    if (!user) {
+      console.log("RESEND: account not found for", normalizedEmail);
+    } else if (user.isVerified) {
+      console.log("RESEND: already verified, email not sent to", normalizedEmail);
+    }
+
     if (user && !user.isVerified) {
       try {
         await createAndSendVerificationEmail(user);
       } catch (emailError) {
-        console.error("RESEND VERIFICATION EMAIL ERROR:", emailError);
+        console.error(
+          "RESEND VERIFICATION EMAIL ERROR:",
+          emailError.code,
+          emailError.message
+        );
       }
     }
 
@@ -388,17 +413,11 @@ export const resendVerification = async (req, res) => {
 // ======================================================
 // LOGIN
 // POST /api/auth/login
-//
-// SECURITY: implements per-account lockout on top of the
-// IP-based rate limiter in rateLimitMiddleware.js, PLUS an
-// email-verification gate. Order of checks matters:
-//   1) account lock check
-//   2) password check (wrong password -> always generic 401,
-//      regardless of verification status, to avoid leaking
-//      whether an email is registered/verified)
-//   3) only AFTER password is confirmed correct do we check
-//      isVerified, so an attacker guessing emails learns
-//      nothing without already knowing the password.
+// Works for customer, vendor AND admin — role is looked
+// up automatically via findUserByEmail() across all three
+// collections, so admins log in through this same endpoint
+// and the frontend already redirects role === "admin" to
+// /admin.
 // ======================================================
 export const login = async (req, res) => {
   try {
@@ -432,7 +451,6 @@ export const login = async (req, res) => {
       });
     }
 
-    // ---- Check if account is currently locked ----
     if (user.lockUntil && user.lockUntil > Date.now()) {
       const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
       return res.status(423).json({
@@ -459,16 +477,12 @@ export const login = async (req, res) => {
       });
     }
 
-    // ---- Correct password from here on: reset lockout state ----
     if (user.failedLoginAttempts > 0 || user.lockUntil) {
       user.failedLoginAttempts = 0;
       user.lockUntil = null;
       await user.save({ validateBeforeSave: false });
     }
 
-    // ---- Email verification gate ----
-    // Account stays inactive until the user clicks the
-    // verification link sent to their inbox.
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
@@ -480,11 +494,18 @@ export const login = async (req, res) => {
 
     const token = generateToken(user, role);
 
+    const formattedUser =
+      role === "vendor"
+        ? formatVendor(user)
+        : role === "admin"
+        ? formatAdmin(user)
+        : formatCustomer(user);
+
     return res.status(200).json({
       success: true,
       message: "Login successful.",
       token,
-      user: role === "vendor" ? formatVendor(user) : formatCustomer(user),
+      user: formattedUser,
     });
   } catch (error) {
     console.error("LOGIN ERROR:", error);
@@ -498,6 +519,7 @@ export const login = async (req, res) => {
 // ======================================================
 // FORGOT PASSWORD
 // POST /api/auth/forgot-password
+// (Works for admins too, via findUserByEmail.)
 // ======================================================
 export const forgotPassword = async (req, res) => {
   const genericResponse = {
@@ -530,7 +552,7 @@ export const forgotPassword = async (req, res) => {
       user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
       await user.save({ validateBeforeSave: false });
 
-      const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+      const clientUrl = process.env.CLIENT_URL || DEFAULT_CLIENT_URL;
       const resetUrl = `${clientUrl}/reset-password/${rawToken}`;
 
       const html = `
@@ -559,8 +581,13 @@ export const forgotPassword = async (req, res) => {
           subject: "Reset your NextTech password",
           html,
         });
+        console.log("RESET EMAIL SENT TO:", user.email); // NEW
       } catch (emailError) {
-        console.error("SEND RESET EMAIL ERROR:", emailError);
+        console.error(
+          "SEND RESET EMAIL ERROR:",
+          emailError.code,
+          emailError.message
+        );
         user.resetPasswordToken = undefined;
         user.resetPasswordExpire = undefined;
         await user.save({ validateBeforeSave: false });
@@ -627,6 +654,13 @@ export const resetPassword = async (req, res) => {
     }
 
     if (!user) {
+      user = await Admin.findOne({
+        resetPasswordToken: hashedToken,
+        resetPasswordExpire: { $gt: Date.now() },
+      }).select("+resetPasswordToken +resetPasswordExpire");
+    }
+
+    if (!user) {
       return res.status(400).json({
         success: false,
         message: "This reset link is invalid or has expired.",
@@ -636,9 +670,6 @@ export const resetPassword = async (req, res) => {
     user.password = await bcrypt.hash(password, 10);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
-
-    // Also clear any lockout state — a successful password
-    // reset is a legitimate account-recovery action.
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
 

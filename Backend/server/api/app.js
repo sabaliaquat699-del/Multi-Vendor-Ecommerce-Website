@@ -10,6 +10,7 @@ import connectDB from "../config/db.js";
 import Product from "../models/Product.js";
 import reviewRoutes from "../routes/reviewRoutes.js";
 import authRoutes from "../routes/authRoutes.js";
+import adminRoutes from "../routes/adminRoutes.js";
 import dealRoutes from "../routes/dealRoutes.js";
 import { mongoSanitize, preventHpp, xssClean } from "../Middleware/securityMiddleware.js";
 
@@ -104,6 +105,7 @@ app.use(async (req, res, next) => {
 // ======================================================
 
 app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/deals", dealRoutes);
 

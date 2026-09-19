@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "create-admin": "node server/scripts/createAdmin.js",
     "dev": "concurrently \"vite\" \"node server/server.js\"",
     "build": "vite build",
     "lint": "eslint .",

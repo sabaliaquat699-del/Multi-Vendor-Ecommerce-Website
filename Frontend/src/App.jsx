@@ -4,11 +4,8 @@ import Navbar from "./Components/Navbar";
 import Footer from "./Components/Footer";
 import ProtectedRoute from "./Components/ProtectedRoute";
 
-// Home loads immediately (landing page).
 import Home from "./Pages/Home";
 
-// Every other page is loaded only when the user opens it
-// (smaller first download = faster on mobile).
 const Products = lazy(() => import("./Pages/Products"));
 const ProductDetails = lazy(() => import("./Pages/ProductDetails"));
 const Categories = lazy(() => import("./Pages/Categories"));
@@ -21,6 +18,7 @@ const Register = lazy(() => import("./Pages/Register"));
 const VerifyEmail = lazy(() => import("./Pages/VerifyEmail"));
 const VendorDashboard = lazy(() => import("./Pages/VendorDashboard"));
 const AdminDashboard = lazy(() => import("./Pages/AdminDashboard"));
+const AdminVendors = lazy(() => import("./Pages/AdminVendors"));
 const Deals = lazy(() => import("./Pages/Deals"));
 const NotFound = lazy(() => import("./Pages/NotFound"));
 const ForgotPassword = lazy(() => import("./Pages/ForgotPassword"));
@@ -42,97 +40,26 @@ function App() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
 
-      {/* Navbar */}
       <Navbar />
 
-      {/* Main Content */}
       <main className="flex-1">
         <Suspense fallback={<PageLoader />}>
           <Routes>
 
-            {/* Home */}
-            <Route
-              path="/"
-              element={<Home />}
-            />
-
-            {/* Products */}
-            <Route
-              path="/products"
-              element={<Products />}
-            />
-
-            {/* Product Details */}
-            <Route
-              path="/products/:id"
-              element={<ProductDetails />}
-            />
-
-            {/* Categories */}
-            <Route
-              path="/categories"
-              element={<Categories />}
-            />
-
-            {/* Stores */}
-            <Route
-              path="/stores"
-              element={<Stores />}
-            />
-
-            {/* Deals */}
-            <Route
-              path="/deals"
-              element={<Deals />}
-            />
-
-            {/* Cart */}
-            <Route
-              path="/cart"
-              element={<Cart />}
-            />
-
-            {/* Checkout */}
-            <Route
-              path="/checkout"
-              element={<Checkout />}
-            />
-
-            {/* Order Success */}
-            <Route
-              path="/order-success"
-              element={<OrderSuccess />}
-            />
-
-            {/* Login */}
-            <Route
-              path="/login"
-              element={<Login />}
-            />
-
-            {/* Register */}
-            <Route
-              path="/register"
-              element={<Register />}
-            />
-
-            {/* Email Verification */}
-            <Route
-              path="/verify-email/:token"
-              element={<VerifyEmail />}
-            />
-
-            {/* Forgot Password */}
-            <Route
-              path="/forgot-password"
-              element={<ForgotPassword />}
-            />
-
-            {/* Reset Password */}
-            <Route
-              path="/reset-password/:token"
-              element={<ResetPassword />}
-            />
+            <Route path="/" element={<Home />} />
+            <Route path="/products" element={<Products />} />
+            <Route path="/products/:id" element={<ProductDetails />} />
+            <Route path="/categories" element={<Categories />} />
+            <Route path="/stores" element={<Stores />} />
+            <Route path="/deals" element={<Deals />} />
+            <Route path="/cart" element={<Cart />} />
+            <Route path="/checkout" element={<Checkout />} />
+            <Route path="/order-success" element={<OrderSuccess />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/verify-email/:token" element={<VerifyEmail />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
 
             {/* Vendor */}
             <Route
@@ -143,7 +70,6 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
             <Route
               path="/vendor/dashboard"
               element={
@@ -153,28 +79,38 @@ function App() {
               }
             />
 
-            {/* Admin */}
+            {/* Admin — now protected, only role === "admin" can enter */}
             <Route
               path="/admin"
-              element={<AdminDashboard />}
+              element={
+                <ProtectedRoute role="admin">
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
             />
-
             <Route
               path="/admin/dashboard"
-              element={<AdminDashboard />}
+              element={
+                <ProtectedRoute role="admin">
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/vendors"
+              element={
+                <ProtectedRoute role="admin">
+                  <AdminVendors />
+                </ProtectedRoute>
+              }
             />
 
-            {/* 404 */}
-            <Route
-              path="*"
-              element={<NotFound />}
-            />
+            <Route path="*" element={<NotFound />} />
 
           </Routes>
         </Suspense>
       </main>
 
-      {/* Footer */}
       <Footer />
 
     </div>

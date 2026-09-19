@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import Customer from "../models/Customer.js";
 import Vendor from "../models/Vendor.js";
+import Admin from "../models/Admin.js";
 
 // ======================================================
 // protect
@@ -28,8 +29,6 @@ export const protect = async (req, res, next) => {
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
-      // Distinguish expired vs invalid so the frontend
-      // can react correctly (e.g. auto-logout vs retry).
       if (err.name === "TokenExpiredError") {
         return res.status(401).json({
           success: false,
@@ -51,15 +50,13 @@ export const protect = async (req, res, next) => {
       });
     }
 
-    // Re-fetch the current user from the DB instead of
-    // trusting the token's embedded data. This means a
-    // deleted or banned account is blocked immediately,
-    // even if their old token hasn't expired yet.
     let user;
     if (role === "vendor") {
       user = await Vendor.findById(id);
     } else if (role === "customer") {
       user = await Customer.findById(id);
+    } else if (role === "admin") {
+      user = await Admin.findById(id);
     } else {
       return res.status(401).json({
         success: false,
@@ -74,8 +71,6 @@ export const protect = async (req, res, next) => {
       });
     }
 
-    // Attach both the DB document and the role to the
-    // request so downstream handlers/middleware can use it.
     req.user = user;
     req.userRole = role;
 
@@ -92,7 +87,7 @@ export const protect = async (req, res, next) => {
 // ======================================================
 // authorize(...allowedRoles)
 // Use AFTER protect(). Restricts a route to specific
-// roles, e.g. authorize("vendor") or authorize("vendor","admin").
+// roles, e.g. authorize("vendor") or authorize("admin").
 // ======================================================
 export const authorize = (...allowedRoles) => {
   return (req, res, next) => {
