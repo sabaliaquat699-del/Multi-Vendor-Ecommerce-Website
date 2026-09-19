@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import useCartStore from "../store/cartstore";
+import { API_URL } from "../config";
 
 const formatDate = (date) =>
   new Date(date).toLocaleDateString("en-US", {
@@ -19,7 +20,7 @@ function Deals() {
   useEffect(() => {
     const fetchDeals = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/deals");
+        const response = await fetch(`${API_URL}/api/deals`);
 
         if (!response.ok) {
           throw new Error("Could not load deals");
@@ -28,9 +29,8 @@ function Deals() {
         const data = await response.json();
         setDeals(data);
       } catch (err) {
-        setError(
-          "Could not connect to the deals server. Please keep the backend terminal running."
-        );
+        console.error("Deals fetch error:", err);
+        setError("Could not load deals right now. Please try again later.");
       } finally {
         setLoading(false);
       }
@@ -105,6 +105,7 @@ function Deals() {
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {deals.map((deal) => {
+              const dealId = deal.id || deal._id;
               const isEnded = deal.saleStatus === "ended";
               const isUpcoming = deal.saleStatus === "upcoming";
 
@@ -113,7 +114,7 @@ function Deals() {
 
               return (
                 <div
-                  key={deal.id}
+                  key={dealId}
                   className={`overflow-hidden rounded-2xl bg-white shadow-sm border border-gray-200 transition duration-300 hover:shadow-lg ${
                     isEnded ? "opacity-70" : ""
                   }`}
@@ -165,8 +166,7 @@ function Deals() {
                     <p className="mt-1 text-sm font-semibold text-gray-600">
                       You save $
                       {(
-                        Number(deal.originalPrice) -
-                        Number(deal.price)
+                        Number(deal.originalPrice) - Number(deal.price)
                       ).toFixed(2)}
                     </p>
 
@@ -200,7 +200,7 @@ function Deals() {
 
                     <div className="mt-5 grid grid-cols-2 gap-3">
                       <Link
-                        to={`/products/${deal.id}`}
+                        to={`/products/${dealId}`}
                         className="flex items-center justify-center rounded-xl border border-gray-400 px-3 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
                       >
                         Details
