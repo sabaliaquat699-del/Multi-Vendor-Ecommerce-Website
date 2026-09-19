@@ -1,13 +1,33 @@
-﻿import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+﻿import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Eye, EyeOff, User, Store, Zap, Upload, X } from "lucide-react";
 
 function Register() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
+  const [searchParams] = useSearchParams();
 
-  const [role, setRole] = useState("customer");
+  // "Become a Seller" links here as /register?role=vendor,
+  // so the Vendor tab should already be selected.
+  const [role, setRole] = useState(
+    searchParams.get("role") === "vendor" ? "vendor" : "customer"
+  );
+
+  // Keep the tab in sync if the URL changes while this page is open
+  useEffect(() => {
+    if (searchParams.get("role") === "vendor") {
+      setRole("vendor");
+    }
+  }, [searchParams]);
+
+  // Already logged in as a vendor? No need to register again.
+  useEffect(() => {
+    if (user?.role === "vendor") {
+      navigate("/vendor", { replace: true });
+    }
+  }, [user, navigate]);
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 

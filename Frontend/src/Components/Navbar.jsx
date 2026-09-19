@@ -167,7 +167,7 @@ function Navbar() {
             </Link>
 
             <Link
-              to="/vendor"
+              to="/register?role=vendor"
               className="whitespace-nowrap text-base font-semibold text-white transition duration-200 hover:text-black"
             >
               Become a Seller
@@ -339,7 +339,7 @@ function Navbar() {
               </Link>
 
               <Link
-                to="/vendor"
+                to="/register?role=vendor"
                 onClick={() => setMenuOpen(false)}
                 className="rounded-lg px-5 py-3 text-base font-semibold text-white transition duration-200 hover:bg-gray-600 hover:text-black"
               >

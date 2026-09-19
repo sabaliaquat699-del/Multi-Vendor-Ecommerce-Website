@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import Navbar from "./Components/Navbar";
 import Footer from "./Components/Footer";
+import ProtectedRoute from "./Components/ProtectedRoute";
 
 // Home loads immediately (landing page).
 import Home from "./Pages/Home";
@@ -129,12 +130,20 @@ function App() {
             {/* Vendor */}
             <Route
               path="/vendor"
-              element={<VendorDashboard />}
+              element={
+                <ProtectedRoute role="vendor">
+                  <VendorDashboard />
+                </ProtectedRoute>
+              }
             />
 
             <Route
               path="/vendor/dashboard"
-              element={<VendorDashboard />}
+              element={
+                <ProtectedRoute role="vendor">
+                  <VendorDashboard />
+                </ProtectedRoute>
+              }
             />
 
             {/* Admin */}
