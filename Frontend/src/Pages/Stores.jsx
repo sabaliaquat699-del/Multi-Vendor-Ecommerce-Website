@@ -84,8 +84,10 @@ function Stores() {
 
               {/* Store Image */}
               <img
-                src={store.image}
+                src={`${store.image}${store.image.includes("?") ? "" : "?auto=format&fit=crop&w=800&q=75"}`}
                 alt={store.name}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-48 object-cover"
               />
 

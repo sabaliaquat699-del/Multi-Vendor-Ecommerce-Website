@@ -2,7 +2,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Eye, EyeOff, User, Store, Zap, Upload, X } from "lucide-react";
-import { API_URL } from "../config";
 
 function Register() {
   const navigate = useNavigate();
@@ -111,7 +110,7 @@ function Register() {
         formData.append("profileImage", profileImage);
       }
 
-      const response = await fetch(`${API_URL}/api/auth/register`, {
+      const response = await fetch("http://localhost:5000/api/auth/register", {
         method: "POST",
         // NOTE: do NOT set Content-Type manually here — the
         // browser sets the correct multipart/form-data boundary
@@ -336,7 +335,7 @@ function Register() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className={labelClass}>Password</label>
                 <div className="relative">

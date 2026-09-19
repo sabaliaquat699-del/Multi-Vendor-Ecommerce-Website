@@ -1,4 +1,3 @@
-
 import { Link } from "react-router-dom";
 
 import iphone from "../assets/Product/iphone.png";
@@ -46,13 +45,13 @@ function Home() {
       <section className="relative overflow-hidden border-b border-gray-600 bg-gray-700">
 
         {/* Background Effects */}
-        <div className="pointer-events-none absolute -right-52 -top-52 h-[600px] w-[600px] rounded-full bg-black/10 blur-3xl" />
+        <div className="pointer-events-none absolute -right-52 -top-52 hidden h-[600px] w-[600px] rounded-full bg-black/10 blur-3xl md:block" />
 
-        <div className="pointer-events-none absolute -bottom-60 -left-52 h-[600px] w-[600px] rounded-full bg-white/[0.06] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-60 -left-52 hidden h-[600px] w-[600px] rounded-full bg-white/[0.06] blur-3xl md:block" />
 
         <div className="relative mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
 
-          <div className="grid min-h-[680px] grid-cols-1 items-center gap-20 py-20 lg:grid-cols-2 lg:gap-32 lg:py-24">
+          <div className="grid grid-cols-1 items-center gap-10 py-12 sm:gap-14 sm:py-16 lg:min-h-[680px] lg:grid-cols-2 lg:gap-32 lg:py-24">
 
             {/* ================= HERO CONTENT ================= */}
             <div className="py-8 lg:py-12">
@@ -263,6 +262,8 @@ function Home() {
                   <img
                     src={category.image}
                     alt={category.name}
+                    loading="lazy"
+                    decoding="async"
                     className="relative h-full w-full object-contain transition-transform duration-500 ease-out group-hover:scale-110"
                   />
 
@@ -424,4 +425,3 @@ function Home() {
 }
 
 export default Home;
-

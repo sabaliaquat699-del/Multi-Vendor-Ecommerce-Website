@@ -81,6 +81,8 @@ function Cart() {
                   <img
                     src={item.image}
                     alt={item.name}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full rounded-xl object-contain p-3"
                   />
                 </div>

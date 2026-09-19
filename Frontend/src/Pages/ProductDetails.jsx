@@ -197,7 +197,8 @@ function ProductDetails() {
   // IMAGE ERROR
   // ======================================================
 
-  const handleImageError = (event) => {
+   const handleImageError = (event) => {
+    event.currentTarget.onerror = null;
     event.currentTarget.src =
       "https://placehold.co/600x500/f3f3f3/171717?text=Product";
   };

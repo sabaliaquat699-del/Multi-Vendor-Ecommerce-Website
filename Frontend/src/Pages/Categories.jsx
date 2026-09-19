@@ -58,16 +58,12 @@ function Categories() {
       <section className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-14">
         <div className="max-w-7xl mx-auto px-6 text-center">
 
-          <p className="text-blue-200 uppercase tracking-widest font-semibold mb-3">
-          
-          </p>
-
-          <h1 className="text-4xl md:text-5xl font-bold">
-          
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold">
+            Shop by Category
           </h1>
 
-          <p className="mt-4 text-lg text-blue-100">
-            
+          <p className="mt-4 text-base sm:text-lg text-blue-100">
+            Find the electronics you need from trusted vendors.
           </p>
 
         </div>
@@ -90,6 +86,8 @@ function Categories() {
                 <img
                   src={category.image}
                   alt={category.name}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500"
                 />
 

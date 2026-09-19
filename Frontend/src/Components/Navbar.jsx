@@ -13,6 +13,9 @@ function Navbar() {
   // Mobile menu state
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Mobile search bar state (search icon on small screens)
+  const [searchOpen, setSearchOpen] = useState(false);
+
   // Search state
   const [search, setSearch] = useState("");
 
@@ -35,6 +38,7 @@ function Navbar() {
     }
 
     setMenuOpen(false);
+    setSearchOpen(false);
   };
 
   // ==========================================
@@ -61,6 +65,7 @@ function Navbar() {
   const handleLogoClick = () => {
     setSearch("");
     setMenuOpen(false);
+    setSearchOpen(false);
   };
 
   const handleProductsClick = () => {
@@ -70,9 +75,9 @@ function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full bg-gray-700 shadow-md">
-      <div className="w-full px-6 sm:px-8 lg:px-10">
+      <div className="w-full px-4 sm:px-6 xl:px-10">
 
-        <div className="flex min-h-[88px] items-center gap-6">
+        <div className="flex min-h-16 items-center gap-3 sm:gap-6 lg:min-h-[88px]">
 
           {/* ================= LOGO ================= */}
 
@@ -91,10 +96,10 @@ function Navbar() {
 
           <form
             onSubmit={handleSearch}
-            className="hidden flex-1 md:flex md:max-w-[350px] lg:max-w-[390px]"
+            className="hidden min-w-0 flex-1 md:flex md:max-w-[350px] lg:max-w-[390px]"
           >
 
-            <div className="flex h-14 w-full items-center rounded-full bg-gray-100 px-5 shadow-sm">
+            <div className="flex h-12 w-full items-center rounded-full bg-gray-100 px-5 shadow-sm lg:h-14">
 
               {/* Search Input */}
 
@@ -123,7 +128,7 @@ function Navbar() {
 
           {/* ================= NAVIGATION ================= */}
 
-          <nav className="hidden flex-1 items-center justify-center gap-6 lg:flex xl:gap-8">
+          <nav className="mx-auto hidden shrink-0 items-center gap-5 xl:flex 2xl:gap-8">
 
             <Link
               to="/"
@@ -180,8 +185,13 @@ function Navbar() {
             <button
               type="button"
               title="Search"
-              onClick={() => navigate("/products")}
-              className="flex h-11 w-9 items-center justify-center rounded-full bg-gray-100 text-lg text-gray-700 transition duration-200 hover:bg-gray-300 md:hidden"
+              aria-label="Search"
+              aria-expanded={searchOpen}
+              onClick={() => {
+                setSearchOpen(!searchOpen);
+                setMenuOpen(false);
+              }}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-lg text-gray-700 transition duration-200 hover:bg-gray-300 md:hidden"
             >
               🔍
             </button>
@@ -208,7 +218,7 @@ function Navbar() {
 
             <Link
               to="/login"
-              className="hidden rounded-xl border border-black bg-black px-12 py-4 text-base font-semibold text-white shadow-sm transition duration-200 hover:bg-gray-500 hover:text-black sm:block"
+              className="hidden rounded-xl border border-black bg-black px-6 py-2.5 text-base font-semibold text-white shadow-sm transition duration-200 hover:bg-gray-500 hover:text-black sm:block 2xl:px-10 2xl:py-3.5"
             >
               Login
             </Link>
@@ -218,7 +228,7 @@ function Navbar() {
 
             <Link
               to="/register"
-              className="hidden border rounded-xl border-black bg-black px-12 py-4 text-base font-semibold text-white shadow-sm transition duration-200 hover:bg-gray-500 hover:text-black sm:block"
+              className="hidden border rounded-xl border-black bg-black px-6 py-2.5 text-base font-semibold text-white shadow-sm transition duration-200 hover:bg-gray-500 hover:text-black sm:block 2xl:px-10 2xl:py-3.5"
             >
               Register
             </Link>
@@ -229,8 +239,13 @@ function Navbar() {
             <button
               type="button"
               title="Menu"
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="flex h-11 w-11 items-center justify-center rounded-lg border border-gray-500 text-xl text-white transition duration-200 hover:bg-gray-500 hover:text-black lg:hidden"
+              aria-label="Menu"
+              aria-expanded={menuOpen}
+              onClick={() => {
+                setMenuOpen(!menuOpen);
+                setSearchOpen(false);
+              }}
+              className="flex h-11 w-11 items-center justify-center rounded-lg border border-gray-500 text-xl text-white transition duration-200 hover:bg-gray-500 hover:text-black xl:hidden"
             >
               {menuOpen ? "✕" : "☰"}
             </button>
@@ -241,11 +256,45 @@ function Navbar() {
 
 
         {/* =========================================================
+            MOBILE SEARCH (small screens only)
+        ========================================================= */}
+
+        {searchOpen && (
+          <form onSubmit={handleSearch} className="pb-3 md:hidden">
+
+            <div className="flex h-11 w-full items-center rounded-full bg-gray-100 px-4 shadow-sm">
+
+              <input
+                type="text"
+                enterKeyHint="search"
+                autoFocus
+                value={search}
+                onChange={handleSearchChange}
+                placeholder="What are you looking for?"
+                className="min-w-0 flex-1 bg-transparent text-base text-gray-800 outline-none placeholder:text-gray-500"
+              />
+
+              <button
+                type="submit"
+                title="Search"
+                aria-label="Search"
+                className="ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-700 text-base text-white"
+              >
+                🔍
+              </button>
+
+            </div>
+
+          </form>
+        )}
+
+
+        {/* =========================================================
             MOBILE MENU
         ========================================================= */}
 
         {menuOpen && (
-          <div className="border-t border-gray-600 py-5 lg:hidden">
+          <div className="max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-gray-600 py-4 xl:hidden">
 
             <nav className="flex flex-col gap-2">
 
