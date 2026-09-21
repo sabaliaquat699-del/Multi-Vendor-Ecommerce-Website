@@ -20,6 +20,9 @@ function Login() {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
 
+  // CHANGED: vendor abhi admin approval ka intezar kar raha hai
+  const [pendingApproval, setPendingApproval] = useState(false);
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -32,6 +35,7 @@ function Login() {
       setLoading(true);
       setError("");
       setNotVerified(false);
+      setPendingApproval(false); // CHANGED
       setResendMessage("");
 
       const response = await fetch(
@@ -53,6 +57,10 @@ function Login() {
       if (!response.ok || !data.success) {
         if (data.notVerified) {
           setNotVerified(true);
+        }
+        // CHANGED: pending vendor ke liye alag (amber) box
+        if (data.pendingApproval) {
+          setPendingApproval(true);
         }
         throw new Error(data.message || "Login failed");
       }
@@ -127,10 +135,18 @@ function Login() {
         {/* Login Card */}
         <div className="w-full rounded-2xl border border-gray-200 bg-white px-6 py-7 shadow-[0_10px_35px_rgba(0,0,0,0.07)] sm:px-8 sm:py-8">
 
-          {/* Error */}
-          {error && (
+          {/* Error (CHANGED: pending approval par red box nahi dikhta) */}
+          {error && !pendingApproval && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-600">
               {error}
+            </div>
+          )}
+
+          {/* CHANGED: Vendor ke liye "admin approval ka intezar" wala box */}
+          {pendingApproval && (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-700">
+              <p className="font-semibold">Waiting for admin approval</p>
+              <p className="mt-1">{error}</p>
             </div>
           )}
 
@@ -178,6 +194,10 @@ function Login() {
                   if (notVerified) {
                     setNotVerified(false);
                     setResendMessage("");
+                  }
+                  // CHANGED
+                  if (pendingApproval) {
+                    setPendingApproval(false);
                   }
                 }}
                 autoComplete="email"

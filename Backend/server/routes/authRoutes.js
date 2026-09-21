@@ -28,6 +28,9 @@ const router = express.Router();
 // upload.single(), so req.body is actually populated when
 // they run.
 // ------------------------------------------------------
+
+// Customer: register -> verification email sent immediately
+// Vendor:   register -> status "pending", NO email until admin approves
 router.post(
   "/register",
   registerLimiter,
@@ -37,8 +40,12 @@ router.post(
   register
 );
 
+// Blocks login until: customer email verified, or
+// vendor approved by admin AND email verified
 router.post("/login", loginLimiter, login);
 
+// Called by the frontend VerifyEmail page when the user clicks the email link
+// (this is a POST, so the frontend must use POST, not GET)
 router.post("/verify-email/:token", verifyEmail);
 router.post("/resend-verification", resendVerificationLimiter, resendVerification);
 

@@ -1,7 +1,8 @@
 ﻿import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { Eye, EyeOff, User, Store, Zap, Upload, X, MailCheck } from "lucide-react";
+// CHANGED: Clock icon add kiya
+import { Eye, EyeOff, User, Store, Zap, Upload, X, MailCheck, Clock } from "lucide-react";
 import { API_URL } from "../config";
 
 function Register() {
@@ -57,6 +58,8 @@ function Register() {
   // auto-logging in (account is inactive until verified).
   const [registered, setRegistered] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
+  // CHANGED: vendor ke liye true hota hai (admin approval ka intezar)
+  const [pendingApproval, setPendingApproval] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
 
@@ -140,10 +143,12 @@ function Register() {
         throw new Error(data.message || "Registration failed");
       }
 
-      // Account created but NOT active yet — it needs email
-      // verification before the user can log in. Show a
-      // confirmation screen instead of auto-logging in.
+      // Account created but NOT active yet.
+      // - Customer: needs email verification.
+      // - Vendor:   needs admin approval first (email comes after).
       setRegisteredEmail(email.trim());
+      // CHANGED: backend ke flag se pata chalta hai vendor pending hai ya nahi
+      setPendingApproval(Boolean(data.pendingApproval));
       setRegistered(true);
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
@@ -180,10 +185,46 @@ function Register() {
   const labelClass = "block text-sm font-semibold text-gray-700 mb-1.5";
 
   // ------------------------------------------------------
-  // "Check your email" confirmation screen — shown right
-  // after a successful register() call.
+  // Confirmation screen — shown right after a successful
+  // register() call.
+  // CHANGED: vendor -> "Waiting for admin approval" screen
+  //          customer -> "Check your email" screen
   // ------------------------------------------------------
   if (registered) {
+    // ---------- VENDOR: admin approval ka intezar ----------
+    if (pendingApproval) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-6 py-14">
+          <div className="w-full max-w-md">
+            <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm text-center">
+              <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
+                <Clock size={28} className="text-amber-600" />
+              </div>
+
+              <h2 className="text-xl font-bold text-gray-900">
+                Waiting for admin approval
+              </h2>
+
+              <p className="text-gray-500 mt-2 text-sm">
+                Your vendor application has been submitted. Once our admin
+                approves it, we'll send an email to{" "}
+                <strong>{registeredEmail}</strong> with a link to verify your
+                account. After verifying, you can log in and start selling.
+              </p>
+
+              <Link
+                to="/login"
+                className="block mt-6 text-sm text-gray-500 hover:text-gray-900"
+              >
+                Back to login
+              </Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ---------- CUSTOMER: email verify karein ----------
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-6 py-14">
         <div className="w-full max-w-md">
@@ -199,10 +240,7 @@ function Register() {
             <p className="text-gray-500 mt-2 text-sm">
               We've sent a verification link to{" "}
               <strong>{registeredEmail}</strong>. Please verify your account
-              before logging in
-              {role === "vendor"
-                ? " — your vendor account will also need admin approval before you can start selling."
-                : "."}
+              before logging in.
             </p>
 
             <button

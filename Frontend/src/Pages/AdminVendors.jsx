@@ -18,6 +18,8 @@ function AdminVendors() {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // CHANGED: approve/reject ke baad ka message ({ type: "success" | "warning", text })
+  const [notice, setNotice] = useState(null);
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -48,13 +50,27 @@ function AdminVendors() {
 
   useEffect(() => {
     if (!token) return;
+    setNotice(null); // CHANGED: tab badalne par purana message hata dein
     loadVendors(activeTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, activeTab]);
 
+  // CHANGED: "All" tab mein vendor ko list se hatane ke bajaye
+  // us ki nayi status wahin update karte hain; baaqi tabs mein hata dete hain.
+  const applyVendorUpdate = (id, updatedVendor) => {
+    setVendors((prev) =>
+      activeTab
+        ? prev.filter((v) => v.id !== id)
+        : prev.map((v) => (v.id === id ? updatedVendor : v))
+    );
+  };
+
   const handleApprove = async (id) => {
     try {
       setActionLoadingId(id);
+      setError("");
+      setNotice(null); // CHANGED
+
       const response = await fetch(
         `${API_URL}/api/admin/vendors/${id}/approve`,
         {
@@ -68,7 +84,13 @@ function AdminVendors() {
         throw new Error(data.message || "Failed to approve vendor.");
       }
 
-      setVendors((prev) => prev.filter((v) => v.id !== id));
+      applyVendorUpdate(id, data.vendor); // CHANGED
+
+      // CHANGED: backend ka message dikhayen; email fail ho to warning
+      setNotice({
+        type: data.emailSent === false ? "warning" : "success",
+        text: data.message || "Vendor approved successfully.",
+      });
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -79,6 +101,9 @@ function AdminVendors() {
   const handleReject = async (id) => {
     try {
       setActionLoadingId(id);
+      setError("");
+      setNotice(null); // CHANGED
+
       const response = await fetch(
         `${API_URL}/api/admin/vendors/${id}/reject`,
         {
@@ -96,9 +121,10 @@ function AdminVendors() {
         throw new Error(data.message || "Failed to reject vendor.");
       }
 
-      setVendors((prev) => prev.filter((v) => v.id !== id));
+      applyVendorUpdate(id, data.vendor); // CHANGED
       setRejectingId(null);
       setRejectReason("");
+      setNotice({ type: "success", text: data.message || "Vendor rejected." }); // CHANGED
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -111,6 +137,27 @@ function AdminVendors() {
       {error && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {error}
+        </div>
+      )}
+
+      {/* CHANGED: approve/reject ke baad ka message */}
+      {notice && (
+        <div
+          className={`mb-6 flex items-start justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${
+            notice.type === "warning"
+              ? "border-amber-200 bg-amber-50 text-amber-700"
+              : "border-green-200 bg-green-50 text-green-700"
+          }`}
+        >
+          <p>{notice.text}</p>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="shrink-0 opacity-60 hover:opacity-100"
+            title="Dismiss"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
 
@@ -174,6 +221,13 @@ function AdminVendors() {
                       <Clock size={12} />
                       {vendor.vendorStatus}
                     </span>
+
+                    {/* CHANGED: approved hai lekin vendor ne abhi email verify nahi ki */}
+                    {vendor.vendorStatus === "approved" && !vendor.isVerified && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        Email not verified yet
+                      </p>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     {vendor.vendorStatus === "pending" ? (

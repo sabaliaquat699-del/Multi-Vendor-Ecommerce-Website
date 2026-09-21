@@ -3,6 +3,8 @@ import Customer from "../models/Customer.js";
 import Vendor from "../models/Vendor.js";
 import Product from "../models/Product.js";
 import sendEmail from "../utils/sendEmail.js";
+// CHANGED: authController ka verification-email helper import kiya
+import { createAndSendVerificationEmail } from "./authController.js";
 
 // ======================================================
 // Format a vendor for admin-facing responses — never
@@ -98,6 +100,13 @@ export const getVendors = async (req, res) => {
 // ======================================================
 // APPROVE VENDOR
 // PATCH /api/admin/vendors/:id/approve
+//
+// CHANGED:
+//  - Vendor abhi verified nahi hai  -> verification email
+//    (link ke saath) jati hai. Vendor us link se verify
+//    karke login karta hai.
+//  - Vendor pehle se verified hai   -> sirf simple
+//    "approved" notification email jati hai.
 // ======================================================
 export const approveVendor = async (req, res) => {
   try {
@@ -121,27 +130,45 @@ export const approveVendor = async (req, res) => {
     vendor.vendorStatus = "approved";
     await vendor.save();
 
-    // Best-effort notification email — approval still
-    // succeeds even if the email fails to send.
+    // Best-effort email — approval still succeeds even if
+    // the email fails to send.
+    let emailSent = true;
+
     try {
-      await sendEmail({
-        to: vendor.email,
-        subject: "Your NextTech vendor account has been approved",
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-            <h2>You're approved!</h2>
-            <p>Hi ${vendor.firstName}, your store "<strong>${vendor.storeName}</strong>"
-            has been approved. You can now log in and start listing products.</p>
-          </div>
-        `,
-      });
+      if (!vendor.isVerified) {
+        // Verification link wali email (token + expiry save karke bhejti hai)
+        await createAndSendVerificationEmail(vendor, { approved: true });
+      } else {
+        // Already verified: link ki zaroorat nahi, sirf notification
+        await sendEmail({
+          to: vendor.email,
+          subject: "Your NextTech vendor account has been approved",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+              <h2>You're approved!</h2>
+              <p>Hi ${vendor.firstName}, your store "<strong>${vendor.storeName}</strong>"
+              has been approved. You can now log in and start listing products.</p>
+            </div>
+          `,
+        });
+      }
     } catch (emailError) {
-      console.error("VENDOR APPROVAL EMAIL ERROR:", emailError);
+      emailSent = false;
+      console.error(
+        "VENDOR APPROVAL EMAIL ERROR:",
+        emailError.code,
+        emailError.message
+      );
     }
 
     return res.status(200).json({
       success: true,
-      message: "Vendor approved successfully.",
+      emailSent,
+      message: emailSent
+        ? vendor.isVerified
+          ? "Vendor approved successfully."
+          : "Vendor approved. A verification email has been sent to the vendor."
+        : "Vendor approved, but the email could not be sent. The vendor can request a new verification email from the login page.",
       vendor: formatVendorForAdmin(vendor),
     });
   } catch (error) {

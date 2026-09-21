@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
 
 const userSchema = new mongoose.Schema(
   {
@@ -112,6 +113,24 @@ const userSchema = new mongoose.Schema(
       },
       // no default — only set when role === "vendor" in the controller
     },
+
+    // ==========================
+    // Email verification
+    // ==========================
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    emailVerificationToken: {
+      type: String,
+      select: false, // hashed token, never returned in queries
+    },
+
+    emailVerificationExpires: {
+      type: Date,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -124,6 +143,24 @@ const userSchema = new mongoose.Schema(
 // email already gets a unique index from `unique: true` above.
 // Add a compound index if you'll frequently query vendors by status:
 userSchema.index({ role: 1, vendorStatus: 1 });
+
+// ==========================
+// Methods
+// ==========================
+// Generates a verification token: the hash is stored in the DB,
+// the raw token is returned so it can be put in the email link.
+// Call user.save() after this to persist the hash and expiry.
+userSchema.methods.createEmailVerificationToken = function () {
+  const rawToken = crypto.randomBytes(32).toString("hex");
+
+  this.emailVerificationToken = crypto
+    .createHash("sha256")
+    .update(rawToken)
+    .digest("hex");
+  this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+  return rawToken;
+};
 
 const User = mongoose.model("User", userSchema);
 

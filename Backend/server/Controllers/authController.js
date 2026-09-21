@@ -106,9 +106,16 @@ const findUserByEmail = async (email, withSelect = "") => {
 // ======================================================
 // Helper: generate + save a hashed verification token on
 // the given user doc, then email the raw (unhashed) token
-// as a link. Reused by register() and resendVerification().
+// as a link. Reused by register() (customers),
+// resendVerification(), and the ADMIN approve-vendor route.
+//
+// CHANGED: ab yeh export hai, aur `approved: true` dene par
+// email ka text "vendor account approved" wala ho jata hai.
 // ======================================================
-const createAndSendVerificationEmail = async (user) => {
+export const createAndSendVerificationEmail = async (
+  user,
+  { approved = false } = {}
+) => {
   const rawToken = crypto.randomBytes(32).toString("hex");
   const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
 
@@ -119,11 +126,22 @@ const createAndSendVerificationEmail = async (user) => {
   const clientUrl = process.env.CLIENT_URL || DEFAULT_CLIENT_URL;
   const verifyUrl = `${clientUrl}/verify-email/${rawToken}`;
 
+  // CHANGED: approve hone wali email ka alag intro
+  const intro = approved
+    ? `Great news! Your vendor account has been <strong>approved</strong> by our admin.
+       Please confirm your email address to activate your account and start selling.
+       This link will expire in <strong>24 hours</strong>.`
+    : `Thanks for signing up on NextTech! Please confirm your email address
+       to activate your account. This link will expire in <strong>24 hours</strong>.`;
+
+  const subject = approved
+    ? "Your NextTech vendor account is approved - verify your email"
+    : "Verify your NextTech account";
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
       <h2>Verify your email</h2>
-      <p>Thanks for signing up on NextTech! Please confirm your email address
-      to activate your account. This link will expire in <strong>24 hours</strong>.</p>
+      <p>${intro}</p>
       <p>
         <a href="${verifyUrl}"
            style="display:inline-block;padding:12px 24px;background:#171717;
@@ -140,7 +158,7 @@ const createAndSendVerificationEmail = async (user) => {
 
   await sendEmail({
     to: user.email,
-    subject: "Verify your NextTech account",
+    subject,
     html,
   });
 
@@ -161,6 +179,11 @@ const createAndSendVerificationEmail = async (user) => {
 // "vendor" or "customer" below — there is no code path
 // here that can create an "admin" account. Admins are
 // created exclusively via server/scripts/createAdmin.js.
+//
+// CHANGED:
+//  - Customer -> verification email foran jati hai.
+//  - Vendor   -> status "pending", koi email nahi. Email
+//                admin ke approve karne ke baad jayegi.
 // ======================================================
 export const register = async (req, res) => {
   try {
@@ -239,10 +262,9 @@ export const register = async (req, res) => {
       isVerified: false,
     };
 
-    let savedUser;
-
+    // ---------------- VENDOR ----------------
     if (finalRole === "vendor") {
-      savedUser = await Vendor.create({
+      await Vendor.create({
         ...baseData,
         storeName: storeName.trim(),
         storeDescription: storeDescription?.trim() || "",
@@ -250,9 +272,20 @@ export const register = async (req, res) => {
         businessAddress: businessAddress?.trim() || "",
         vendorStatus: "pending",
       });
-    } else {
-      savedUser = await Customer.create(baseData);
+
+      // CHANGED: vendor ko yahan email NAHI bheji jati
+      return res.status(201).json({
+        success: true,
+        requiresVerification: false,
+        pendingApproval: true,
+        message:
+          "Registered successfully! Your vendor account is waiting for admin approval. Once approved, you will receive an email to verify your account and log in.",
+        email: normalizedEmail,
+      });
     }
+
+    // ---------------- CUSTOMER ----------------
+    const savedUser = await Customer.create(baseData);
 
     try {
       await createAndSendVerificationEmail(savedUser);
@@ -267,10 +300,9 @@ export const register = async (req, res) => {
     return res.status(201).json({
       success: true,
       requiresVerification: true,
+      pendingApproval: false,
       message:
-        finalRole === "vendor"
-          ? "Registered successfully! Please check your email to verify your account. Your vendor account will also need admin approval before you can start selling."
-          : "Registered successfully! Please check your email to verify your account before logging in.",
+        "Registered successfully! Please check your email to verify your account before logging in.",
       email: normalizedEmail,
     });
   } catch (error) {
@@ -338,6 +370,17 @@ export const verifyEmail = async (req, res) => {
       });
     }
 
+    // CHANGED: agar vendor abhi approved nahi hai (jaise purane flow ka
+    // token), to verify na hone dein aur login token bhi na dein.
+    if (role === "vendor" && user.vendorStatus !== "approved") {
+      return res.status(403).json({
+        success: false,
+        pendingApproval: true,
+        message:
+          "Your vendor account is still waiting for admin approval. You will receive a new verification email once it is approved.",
+      });
+    }
+
     user.isVerified = true;
     user.verificationToken = undefined;
     user.verificationTokenExpire = undefined;
@@ -382,7 +425,8 @@ export const resendVerification = async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const { user } = await findUserByEmail(normalizedEmail);
+    // CHANGED: ab `role` bhi le rahe hain
+    const { user, role } = await findUserByEmail(normalizedEmail);
 
     // NEW: terminal mein saaf nazar aaye ke email kyun gayi ya nahi gayi
     if (!user) {
@@ -392,14 +436,22 @@ export const resendVerification = async (req, res) => {
     }
 
     if (user && !user.isVerified) {
-      try {
-        await createAndSendVerificationEmail(user);
-      } catch (emailError) {
-        console.error(
-          "RESEND VERIFICATION EMAIL ERROR:",
-          emailError.code,
-          emailError.message
-        );
+      // CHANGED: vendor ko email tabhi jayegi jab admin approve kar chuka ho
+      const vendorNotApproved =
+        role === "vendor" && user.vendorStatus !== "approved";
+
+      if (vendorNotApproved) {
+        console.log("RESEND: vendor not approved yet, email not sent to", normalizedEmail);
+      } else {
+        try {
+          await createAndSendVerificationEmail(user);
+        } catch (emailError) {
+          console.error(
+            "RESEND VERIFICATION EMAIL ERROR:",
+            emailError.code,
+            emailError.message
+          );
+        }
       }
     }
 
@@ -483,6 +535,29 @@ export const login = async (req, res) => {
       await user.save({ validateBeforeSave: false });
     }
 
+    // CHANGED: vendor ke liye pehle admin approval check hota hai
+    if (role === "vendor") {
+      if (user.vendorStatus === "rejected") {
+        return res.status(403).json({
+          success: false,
+          rejected: true,
+          message:
+            "Your vendor application was not approved. Please contact support for more information.",
+        });
+      }
+
+      if (user.vendorStatus !== "approved") {
+        return res.status(403).json({
+          success: false,
+          pendingApproval: true,
+          message:
+            "Your vendor account is waiting for admin approval. You will receive an email once it is approved.",
+        });
+      }
+    }
+
+    // Customer: email verify hona zaroori.
+    // Vendor: approve ho chuka hai, ab email verify hona zaroori.
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
