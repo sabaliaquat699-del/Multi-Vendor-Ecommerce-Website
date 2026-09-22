@@ -11,57 +11,33 @@ const sendEmail = async ({
 }) => {
   try {
     // ==================================================
-    // CHECK EMAIL ENVIRONMENT VARIABLES
+    // CHECK ENVIRONMENT VARIABLES
     // ==================================================
 
-    if (
-      !process.env.EMAIL_USER
-    ) {
+    if (!process.env.EMAIL_USER) {
       throw new Error(
-        "EMAIL_USER is missing in .env"
+        "EMAIL_USER is missing in Vercel Environment Variables"
       );
     }
 
-    if (
-      !process.env.EMAIL_PASS
-    ) {
+    if (!process.env.EMAIL_PASS) {
       throw new Error(
-        "EMAIL_PASS is missing in .env"
+        "EMAIL_PASS is missing in Vercel Environment Variables"
       );
     }
 
     // ==================================================
-    // SMTP PORT
+    // CREATE GMAIL TRANSPORTER
     // ==================================================
 
-    const port =
-      Number(
-        process.env.EMAIL_PORT
-      ) || 465;
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
 
-    // ==================================================
-    // CREATE TRANSPORTER
-    // ==================================================
-
-    const transporter =
-      nodemailer.createTransport({
-        host:
-          process.env.EMAIL_HOST ||
-          "smtp.gmail.com",
-
-        port,
-
-        secure:
-          port === 465,
-
-        auth: {
-          user:
-            process.env.EMAIL_USER,
-
-          pass:
-            process.env.EMAIL_PASS,
-        },
-      });
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
 
     // ==================================================
     // VERIFY SMTP CONNECTION
@@ -78,6 +54,11 @@ const sendEmail = async ({
     );
 
     console.log(
+      "Email User:",
+      process.env.EMAIL_USER
+    );
+
+    console.log(
       "================================="
     );
 
@@ -85,17 +66,12 @@ const sendEmail = async ({
     // SEND EMAIL
     // ==================================================
 
-    const info =
-      await transporter.sendMail({
-        from:
-          `"NextTech" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
-
-        to,
-
-        subject,
-
-        html,
-      });
+    const info = await transporter.sendMail({
+      from: `"NextTech" <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      html,
+    });
 
     console.log(
       "================================="
