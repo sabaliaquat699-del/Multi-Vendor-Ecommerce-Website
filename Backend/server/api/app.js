@@ -34,6 +34,14 @@ dotenv.config({
 const app = express();
 
 // ======================================================
+// VERCEL REVERSE PROXY
+// ======================================================
+
+// Vercel ke reverse proxy ke peeche Express ko
+// client IP / X-Forwarded-For correctly handle karne deta hai.
+app.set("trust proxy", 1);
+
+// ======================================================
 // SECURITY
 // ======================================================
 
