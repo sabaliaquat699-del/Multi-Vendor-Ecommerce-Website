@@ -1,1 +1,7 @@
-export const API_URL = import.meta.env.VITE_API_URL || "https://multi-vendor-ecommerce-website-f8eo.vercel.app";
+const API_URL = import.meta.env.VITE_API_URL;
+
+if (!API_URL) {
+  console.error("VITE_API_URL is not configured.");
+}
+
+export { API_URL };

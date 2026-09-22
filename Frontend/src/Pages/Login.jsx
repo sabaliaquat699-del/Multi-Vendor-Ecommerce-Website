@@ -14,13 +14,10 @@ function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Shown when the backend blocks login because the
-  // account's email hasn't been verified yet.
   const [notVerified, setNotVerified] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
 
-  // CHANGED: vendor abhi admin approval ka intezar kar raha hai
   const [pendingApproval, setPendingApproval] = useState(false);
 
   const handleSubmit = async (event) => {
@@ -35,22 +32,19 @@ function Login() {
       setLoading(true);
       setError("");
       setNotVerified(false);
-      setPendingApproval(false); // CHANGED
+      setPendingApproval(false);
       setResendMessage("");
 
-      const response = await fetch(
-        `${API_URL}/api/auth/login`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: email.trim(),
-            password,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+      });
 
       const data = await response.json();
 
@@ -58,10 +52,11 @@ function Login() {
         if (data.notVerified) {
           setNotVerified(true);
         }
-        // CHANGED: pending vendor ke liye alag (amber) box
+
         if (data.pendingApproval) {
           setPendingApproval(true);
         }
+
         throw new Error(data.message || "Login failed");
       }
 
@@ -85,7 +80,9 @@ function Login() {
 
   const handleResend = async () => {
     if (!email.trim()) {
-      setResendMessage("Please enter your email address above first.");
+      setResendMessage(
+        "Please enter your email address above first."
+      );
       return;
     }
 
@@ -97,18 +94,25 @@ function Login() {
         `${API_URL}/api/auth/resend-verification`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.trim() }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+          }),
         }
       );
 
       const data = await response.json();
+
       setResendMessage(
         data.message ||
           "If an account with that email exists, a new verification link has been sent."
       );
     } catch {
-      setResendMessage("Something went wrong. Please try again.");
+      setResendMessage(
+        "Something went wrong. Please try again."
+      );
     } finally {
       setResendLoading(false);
     }
@@ -116,12 +120,9 @@ function Login() {
 
   return (
     <div className="min-h-[calc(100vh-80px)] bg-[#f7f7f7] flex items-center justify-center px-4 py-16 sm:px-6 lg:px-8">
-
       <div className="w-full max-w-[460px]">
 
-        {/* Heading */}
         <div className="text-center mb-8">
-
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#171717]">
             Welcome Back
           </h1>
@@ -129,51 +130,56 @@ function Login() {
           <p className="mt-3 text-sm sm:text-base text-gray-500">
             Login to your ElectroMarket account
           </p>
-
         </div>
 
-        {/* Login Card */}
         <div className="w-full rounded-2xl border border-gray-200 bg-white px-6 py-7 shadow-[0_10px_35px_rgba(0,0,0,0.07)] sm:px-8 sm:py-8">
 
-          {/* Error (CHANGED: pending approval par red box nahi dikhta) */}
           {error && !pendingApproval && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-600">
               {error}
             </div>
           )}
 
-          {/* CHANGED: Vendor ke liye "admin approval ka intezar" wala box */}
           {pendingApproval && (
             <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-700">
-              <p className="font-semibold">Waiting for admin approval</p>
-              <p className="mt-1">{error}</p>
+              <p className="font-semibold">
+                Waiting for admin approval
+              </p>
+
+              <p className="mt-1">
+                {error}
+              </p>
             </div>
           )}
 
-          {/* Resend verification block — only shown when
-              the backend flagged this account as unverified */}
           {notVerified && (
             <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-700">
-              <p>Didn't get the email?</p>
+              <p>
+                Didn't get the email?
+              </p>
+
               <button
                 type="button"
                 onClick={handleResend}
                 disabled={resendLoading}
                 className="mt-1 font-semibold underline underline-offset-2 disabled:opacity-60"
               >
-                {resendLoading ? "Sending..." : "Resend verification email"}
+                {resendLoading
+                  ? "Sending..."
+                  : "Resend verification email"}
               </button>
+
               {resendMessage && (
-                <p className="mt-2 text-amber-700/80">{resendMessage}</p>
+                <p className="mt-2 text-amber-700/80">
+                  {resendMessage}
+                </p>
               )}
             </div>
           )}
 
           <form onSubmit={handleSubmit}>
 
-            {/* Email */}
             <div className="mb-5">
-
               <label
                 htmlFor="email"
                 className="mb-2 block text-sm font-semibold text-[#171717]"
@@ -188,14 +194,16 @@ function Login() {
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
+
                   if (error) {
                     setError("");
                   }
+
                   if (notVerified) {
                     setNotVerified(false);
                     setResendMessage("");
                   }
-                  // CHANGED
+
                   if (pendingApproval) {
                     setPendingApproval(false);
                   }
@@ -209,12 +217,9 @@ function Login() {
                 }}
                 className="rounded-lg border border-gray-300 bg-white text-sm text-gray-900 outline-none transition-all duration-200 placeholder:text-gray-400 hover:border-gray-400 focus:border-[#171717] focus:ring-2 focus:ring-gray-200"
               />
-
             </div>
 
-            {/* Password */}
             <div className="mb-6">
-
               <div className="mb-2 flex items-center justify-between">
 
                 <label
@@ -230,7 +235,6 @@ function Login() {
                 >
                   Forgot password?
                 </Link>
-
               </div>
 
               <input
@@ -240,6 +244,7 @@ function Login() {
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
+
                   if (error) {
                     setError("");
                   }
@@ -253,10 +258,8 @@ function Login() {
                 }}
                 className="rounded-lg border border-gray-300 bg-white text-sm text-gray-900 outline-none transition-all duration-200 placeholder:text-gray-400 hover:border-gray-400 focus:border-[#171717] focus:ring-2 focus:ring-gray-200"
               />
-
             </div>
 
-            {/* Login Button */}
             <button
               type="submit"
               disabled={loading}
@@ -278,12 +281,9 @@ function Login() {
                 </>
               )}
             </button>
-
           </form>
 
-          {/* Divider */}
           <div className="my-7 flex items-center gap-4">
-
             <div className="h-px flex-1 bg-gray-200"></div>
 
             <span className="text-xs font-medium text-gray-400">
@@ -291,35 +291,24 @@ function Login() {
             </span>
 
             <div className="h-px flex-1 bg-gray-200"></div>
-
           </div>
 
-          {/* Register */}
           <div className="text-center">
-
             <p className="text-sm text-gray-500">
               Don't have an account?
             </p>
 
             <Link
               to="/register"
-              className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-[#171717] transition hover:underline hover:underline-offset-4"
+              className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-[#171717] hover:underline"
             >
               Create an account
               <ArrowRight size={15} />
             </Link>
-
           </div>
 
         </div>
-
-        {/* Bottom Text */}
-        <p className="mt-6 text-center text-xs text-gray-400">
-          Secure access to your ElectroMarket account
-        </p>
-
       </div>
-
     </div>
   );
 }

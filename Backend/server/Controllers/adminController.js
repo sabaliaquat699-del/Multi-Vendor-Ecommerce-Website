@@ -10,19 +10,43 @@ import sendEmail from "../utils/sendEmail.js";
 // FORMAT VENDOR FOR ADMIN RESPONSE
 // ======================================================
 
-const formatVendorForAdmin = (vendor) => ({
+const formatVendorForAdmin = (
+  vendor
+) => ({
   id: vendor._id,
-  firstName: vendor.firstName,
-  lastName: vendor.lastName,
-  email: vendor.email,
-  phone: vendor.phone,
-  storeName: vendor.storeName,
-  storeDescription: vendor.storeDescription,
-  businessName: vendor.businessName,
-  businessAddress: vendor.businessAddress,
-  vendorStatus: vendor.vendorStatus,
-  isVerified: vendor.isVerified,
-  createdAt: vendor.createdAt,
+
+  firstName:
+    vendor.firstName,
+
+  lastName:
+    vendor.lastName,
+
+  email:
+    vendor.email,
+
+  phone:
+    vendor.phone,
+
+  storeName:
+    vendor.storeName,
+
+  storeDescription:
+    vendor.storeDescription,
+
+  businessName:
+    vendor.businessName,
+
+  businessAddress:
+    vendor.businessAddress,
+
+  vendorStatus:
+    vendor.vendorStatus,
+
+  isVerified:
+    vendor.isVerified,
+
+  createdAt:
+    vendor.createdAt,
 });
 
 // ======================================================
@@ -30,561 +54,667 @@ const formatVendorForAdmin = (vendor) => ({
 // GET /api/admin/dashboard-stats
 // ======================================================
 
-export const getDashboardStats = async (req, res) => {
-  try {
-    const [
-      totalCustomers,
-      totalVendors,
-      pendingVendors,
-      approvedVendors,
-      rejectedVendors,
-      totalProducts,
-    ] = await Promise.all([
-      // Customers are still counted from Customer model
-      Customer.countDocuments(),
-
-      // Vendors are stored in User collection
-      User.countDocuments({
-        role: "vendor",
-      }),
-
-      User.countDocuments({
-        role: "vendor",
-        vendorStatus: "pending",
-      }),
-
-      User.countDocuments({
-        role: "vendor",
-        vendorStatus: "approved",
-      }),
-
-      User.countDocuments({
-        role: "vendor",
-        vendorStatus: "rejected",
-      }),
-
-      Product.countDocuments(),
-    ]);
-
-    return res.status(200).json({
-      success: true,
-
-      stats: {
+export const getDashboardStats =
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const [
         totalCustomers,
         totalVendors,
         pendingVendors,
         approvedVendors,
         rejectedVendors,
         totalProducts,
-      },
-    });
-  } catch (error) {
-    console.error(
-      "ADMIN DASHBOARD STATS ERROR:",
-      error
-    );
+      ] =
+        await Promise.all([
+          // Customers
+          Customer.countDocuments(),
 
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load dashboard stats.",
-    });
-  }
-};
+          // Vendors
+          User.countDocuments({
+            role: "vendor",
+          }),
+
+          // Pending
+          User.countDocuments({
+            role: "vendor",
+            vendorStatus:
+              "pending",
+          }),
+
+          // Approved
+          User.countDocuments({
+            role: "vendor",
+            vendorStatus:
+              "approved",
+          }),
+
+          // Rejected
+          User.countDocuments({
+            role: "vendor",
+            vendorStatus:
+              "rejected",
+          }),
+
+          // Products
+          Product.countDocuments(),
+        ]);
+
+      return res.status(200).json({
+        success: true,
+
+        stats: {
+          totalCustomers,
+          totalVendors,
+          pendingVendors,
+          approvedVendors,
+          rejectedVendors,
+          totalProducts,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "ADMIN DASHBOARD STATS ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to load dashboard stats.",
+      });
+    }
+  };
 
 // ======================================================
 // GET VENDORS
 // GET /api/admin/vendors
 // ======================================================
 
-export const getVendors = async (req, res) => {
-  try {
-    const status = String(
-      req.query.status || ""
-    ).trim();
+export const getVendors =
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const status =
+        String(
+          req.query.status ||
+            ""
+        ).trim();
 
-    const query = {};
+      const query = {};
 
-    if (
-      ["pending", "approved", "rejected"].includes(
-        status
-      )
-    ) {
-      query.vendorStatus = status;
+      if (
+        [
+          "pending",
+          "approved",
+          "rejected",
+        ].includes(status)
+      ) {
+        query.vendorStatus =
+          status;
+      }
+
+      const vendors =
+        await User.find({
+          role: "vendor",
+          ...query,
+        }).sort({
+          createdAt: -1,
+        });
+
+      return res.status(200).json({
+        success: true,
+
+        totalVendors:
+          vendors.length,
+
+        vendors:
+          vendors.map(
+            formatVendorForAdmin
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "ADMIN GET VENDORS ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to fetch vendors.",
+      });
     }
-
-    // Vendors are stored inside User collection
-    const vendors = await User.find({
-      role: "vendor",
-      ...query,
-    }).sort({
-      createdAt: -1,
-    });
-
-    return res.status(200).json({
-      success: true,
-      totalVendors: vendors.length,
-
-      vendors: vendors.map(
-        formatVendorForAdmin
-      ),
-    });
-  } catch (error) {
-    console.error(
-      "ADMIN GET VENDORS ERROR:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch vendors.",
-    });
-  }
-};
+  };
 
 // ======================================================
 // APPROVE VENDOR
 // PATCH /api/admin/vendors/:id/approve
 // ======================================================
 
-export const approveVendor = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // ==========================================
-    // CHECK VENDOR ID
-    // ==========================================
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid vendor ID.",
-      });
-    }
-
-    // ==========================================
-    // FIND VENDOR
-    // ==========================================
-
-    // Vendor registration uses User model,
-    // so admin approval must also use User.
-    const vendor = await User.findOne({
-      _id: id,
-      role: "vendor",
-    }).select(
-      "+verificationToken +verificationTokenExpire"
-    );
-
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found.",
-      });
-    }
-
-    // ==========================================
-    // APPROVE VENDOR
-    // ==========================================
-
-    vendor.vendorStatus = "approved";
-
-    let verificationToken = null;
-
-    // ==========================================
-    // GENERATE VERIFICATION TOKEN
-    // ==========================================
-
-    if (!vendor.isVerified) {
-      // Generate RAW token
-      verificationToken =
-        crypto.randomBytes(32).toString("hex");
-
-      // Store HASHED token in database
-      vendor.verificationToken = crypto
-        .createHash("sha256")
-        .update(verificationToken)
-        .digest("hex");
-
-      // Token expires after 24 hours
-      vendor.verificationTokenExpire =
-        new Date(
-          Date.now() + 24 * 60 * 60 * 1000
-        );
-    }
-
-    await vendor.save();
-
-    // ==========================================
-    // SEND EMAIL
-    // ==========================================
-
-    let emailSent = true;
-
+export const approveVendor =
+  async (
+    req,
+    res
+  ) => {
     try {
-      // ========================================
-      // UNVERIFIED VENDOR
-      // SEND VERIFICATION EMAIL
-      // ========================================
+      const {
+        id,
+      } = req.params;
 
-      if (!vendor.isVerified) {
-        const clientUrl =
-          process.env.FRONTEND_URL ||
-          process.env.CLIENT_URL ||
-          "http://localhost:5173";
+      // ------------------------------------------
+      // CHECK ID
+      // ------------------------------------------
 
-        const verificationUrl =
-          `${clientUrl}/verify-email/${verificationToken}`;
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid vendor ID.",
+        });
+      }
 
-        await sendEmail({
-          to: vendor.email,
+      // ------------------------------------------
+      // FIND VENDOR
+      // ------------------------------------------
 
-          subject:
-            "Your NextTech Vendor Account Has Been Approved",
+      const vendor =
+        await User.findOne({
+          _id: id,
+          role: "vendor",
+        }).select(
+          "+verificationToken +verificationTokenExpire"
+        );
 
-          html: `
-            <!DOCTYPE html>
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Vendor not found.",
+        });
+      }
 
-            <html>
-              <head>
-                <meta charset="UTF-8" />
-                <title>Vendor Approval</title>
-              </head>
+      // ------------------------------------------
+      // APPROVE
+      // ------------------------------------------
 
-              <body
-                style="
-                  margin: 0;
-                  padding: 0;
-                  background: #f5f5f5;
-                  font-family: Arial, sans-serif;
-                "
-              >
+      vendor.vendorStatus =
+        "approved";
 
-                <div
+      let verificationToken =
+        null;
+
+      // ------------------------------------------
+      // GENERATE TOKEN
+      // ------------------------------------------
+
+      if (
+        !vendor.isVerified
+      ) {
+        verificationToken =
+          crypto
+            .randomBytes(32)
+            .toString("hex");
+
+        vendor.verificationToken =
+          crypto
+            .createHash(
+              "sha256"
+            )
+            .update(
+              verificationToken
+            )
+            .digest("hex");
+
+        vendor.verificationTokenExpire =
+          new Date(
+            Date.now() +
+              24 *
+                60 *
+                60 *
+                1000
+          );
+      }
+
+      await vendor.save();
+
+      // ------------------------------------------
+      // EMAIL
+      // ------------------------------------------
+
+      let emailSent = true;
+
+      try {
+        // ----------------------------------------
+        // UNVERIFIED VENDOR
+        // ----------------------------------------
+
+        if (
+          !vendor.isVerified
+        ) {
+          const clientUrl =
+            process.env.FRONTEND_URL ||
+            process.env.CLIENT_URL ||
+            "http://localhost:5173";
+
+          const verificationUrl =
+            `${clientUrl}/verify-email/${verificationToken}`;
+
+          await sendEmail({
+            to: vendor.email,
+
+            subject:
+              "Your NextTech Vendor Account Has Been Approved",
+
+            html: `
+              <!DOCTYPE html>
+
+              <html>
+                <head>
+                  <meta charset="UTF-8" />
+                  <title>
+                    Vendor Approval
+                  </title>
+                </head>
+
+                <body
                   style="
-                    max-width: 600px;
-                    margin: 40px auto;
-                    background: #ffffff;
-                    padding: 35px;
-                    border-radius: 10px;
+                    margin: 0;
+                    padding: 0;
+                    background: #f5f5f5;
+                    font-family: Arial, sans-serif;
                   "
                 >
 
-                  <h2
+                  <div
                     style="
-                      color: #171717;
-                      margin-bottom: 20px;
+                      max-width: 600px;
+                      margin: 40px auto;
+                      background: #ffffff;
+                      padding: 35px;
+                      border-radius: 10px;
                     "
                   >
+
+                    <h2
+                      style="
+                        color: #171717;
+                        margin-bottom: 20px;
+                      "
+                    >
+                      Vendor Account Approved
+                    </h2>
+
+                    <p>
+                      Hello
+                      <strong>
+                        ${vendor.firstName}
+                      </strong>,
+                    </p>
+
+                    <p>
+                      Your NextTech vendor
+                      application has been
+                      approved by the administrator.
+                    </p>
+
+                    <p>
+                      Your store:
+                      <strong>
+                        ${vendor.storeName}
+                      </strong>
+                    </p>
+
+                    <p>
+                      Please verify your email
+                      address before logging
+                      into your vendor account.
+                    </p>
+
+                    <div
+                      style="
+                        text-align: center;
+                        margin: 30px 0;
+                      "
+                    >
+
+                      <a
+                        href="${verificationUrl}"
+                        style="
+                          display: inline-block;
+                          padding: 13px 25px;
+                          background: #171717;
+                          color: #ffffff;
+                          text-decoration: none;
+                          border-radius: 6px;
+                          font-weight: bold;
+                        "
+                      >
+                        Verify Email
+                      </a>
+
+                    </div>
+
+                    <p>
+                      This verification link
+                      will expire in 24 hours.
+                    </p>
+
+                    <p
+                      style="
+                        color: #777;
+                        font-size: 13px;
+                      "
+                    >
+                      If you did not request
+                      this account, you can
+                      ignore this email.
+                    </p>
+
+                  </div>
+
+                </body>
+              </html>
+            `,
+          });
+        }
+
+        // ----------------------------------------
+        // ALREADY VERIFIED
+        // ----------------------------------------
+
+        else {
+          await sendEmail({
+            to: vendor.email,
+
+            subject:
+              "Your NextTech Vendor Account Has Been Approved",
+
+            html: `
+              <!DOCTYPE html>
+
+              <html>
+                <body
+                  style="
+                    font-family: Arial, sans-serif;
+                    max-width: 600px;
+                    margin: 40px auto;
+                    padding: 30px;
+                  "
+                >
+
+                  <h2>
                     Vendor Account Approved
                   </h2>
 
                   <p>
-                    Hello
-                    <strong>${vendor.firstName}</strong>,
+                    Hi
+                    <strong>
+                      ${vendor.firstName}
+                    </strong>,
                   </p>
 
                   <p>
-                    Your NextTech vendor application
-                    has been approved by the administrator.
+                    Your vendor account
+                    has been approved.
                   </p>
 
                   <p>
-                    Your store:
-                    <strong>${vendor.storeName}</strong>
+                    Store:
+                    <strong>
+                      ${vendor.storeName}
+                    </strong>
                   </p>
 
                   <p>
-                    Please verify your email address
-                    before logging into your vendor account.
+                    You can now log in
+                    and start managing
+                    your store.
                   </p>
 
-                  <div
-                    style="
-                      text-align: center;
-                      margin: 30px 0;
-                    "
-                  >
+                </body>
+              </html>
+            `,
+          });
+        }
 
-                    <a
-                      href="${verificationUrl}"
-                      style="
-                        display: inline-block;
-                        padding: 13px 25px;
-                        background: #171717;
-                        color: #ffffff;
-                        text-decoration: none;
-                        border-radius: 6px;
-                        font-weight: bold;
-                      "
-                    >
-                      Verify Email
-                    </a>
+        console.log(
+          `Approval email sent to ${vendor.email}`
+        );
+      } catch (
+        emailError
+      ) {
+        emailSent = false;
 
-                  </div>
+        console.error(
+          "================================="
+        );
 
-                  <p>
-                    This verification link will expire
-                    in 24 hours.
-                  </p>
+        console.error(
+          "VENDOR APPROVAL EMAIL ERROR"
+        );
 
-                  <p
-                    style="
-                      color: #777;
-                      font-size: 13px;
-                    "
-                  >
-                    If you did not request this account,
-                    you can ignore this email.
-                  </p>
+        console.error(
+          "Message:",
+          emailError.message
+        );
 
-                </div>
+        console.error(
+          "Code:",
+          emailError.code
+        );
 
-              </body>
-            </html>
-          `,
-        });
+        console.error(
+          "Response:",
+          emailError.response
+        );
+
+        console.error(
+          "================================="
+        );
       }
 
-      // ========================================
-      // ALREADY VERIFIED VENDOR
-      // SEND NORMAL APPROVAL EMAIL
-      // ========================================
+      // ------------------------------------------
+      // RESPONSE
+      // ------------------------------------------
 
-      else {
-        await sendEmail({
-          to: vendor.email,
+      return res.status(200).json({
+        success: true,
 
-          subject:
-            "Your NextTech Vendor Account Has Been Approved",
+        emailSent,
 
-          html: `
-            <!DOCTYPE html>
+        message:
+          emailSent
+            ? vendor.isVerified
+              ? "Vendor approved successfully."
+              : "Vendor approved. A verification email has been sent to the vendor."
+            : "Vendor approved, but the email could not be sent. The vendor can request a new verification email from the login page.",
 
-            <html>
-              <body
-                style="
-                  font-family: Arial, sans-serif;
-                  max-width: 600px;
-                  margin: 40px auto;
-                  padding: 30px;
-                "
-              >
-
-                <h2>
-                  Vendor Account Approved
-                </h2>
-
-                <p>
-                  Hi
-                  <strong>${vendor.firstName}</strong>,
-                </p>
-
-                <p>
-                  Your vendor account has been approved.
-                </p>
-
-                <p>
-                  Store:
-                  <strong>${vendor.storeName}</strong>
-                </p>
-
-                <p>
-                  You can now log in and start
-                  managing your store.
-                </p>
-
-              </body>
-            </html>
-          `,
-        });
-      }
-
-      console.log(
-        `Approval email sent to ${vendor.email}`
-      );
-    } catch (emailError) {
-      emailSent = false;
-
+        vendor:
+          formatVendorForAdmin(
+            vendor
+          ),
+      });
+    } catch (error) {
       console.error(
-        "================================="
+        "APPROVE VENDOR ERROR:",
+        error
       );
 
-      console.error(
-        "VENDOR APPROVAL EMAIL ERROR"
-      );
-
-      console.error(
-        "Message:",
-        emailError.message
-      );
-
-      console.error(
-        "Code:",
-        emailError.code
-      );
-
-      console.error(
-        "Response:",
-        emailError.response
-      );
-
-      console.error(
-        "================================="
-      );
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to approve vendor.",
+      });
     }
-
-    // ==========================================
-    // RESPONSE
-    // ==========================================
-
-    return res.status(200).json({
-      success: true,
-
-      emailSent,
-
-      message: emailSent
-        ? vendor.isVerified
-          ? "Vendor approved successfully."
-          : "Vendor approved. A verification email has been sent to the vendor."
-        : "Vendor approved, but the email could not be sent. The vendor can request a new verification email from the login page.",
-
-      vendor: formatVendorForAdmin(vendor),
-    });
-  } catch (error) {
-    console.error(
-      "APPROVE VENDOR ERROR:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to approve vendor.",
-    });
-  }
-};
+  };
 
 // ======================================================
 // REJECT VENDOR
 // PATCH /api/admin/vendors/:id/reject
 // ======================================================
 
-export const rejectVendor = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const { reason } = req.body;
-
-    // ==========================================
-    // CHECK ID
-    // ==========================================
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid vendor ID.",
-      });
-    }
-
-    // ==========================================
-    // FIND VENDOR
-    // ==========================================
-
-    // Vendor is stored in User collection
-    const vendor = await User.findOne({
-      _id: id,
-      role: "vendor",
-    });
-
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found.",
-      });
-    }
-
-    // ==========================================
-    // REJECT
-    // ==========================================
-
-    vendor.vendorStatus = "rejected";
-
-    await vendor.save();
-
-    // ==========================================
-    // SEND REJECTION EMAIL
-    // ==========================================
-
+export const rejectVendor =
+  async (
+    req,
+    res
+  ) => {
     try {
-      await sendEmail({
-        to: vendor.email,
+      const {
+        id,
+      } = req.params;
 
-        subject:
-          "Update on Your NextTech Vendor Application",
+      const {
+        reason,
+      } = req.body;
 
-        html: `
-          <div
-            style="
-              font-family: Arial, sans-serif;
-              max-width: 480px;
-              margin: 0 auto;
-            "
-          >
+      // ------------------------------------------
+      // CHECK ID
+      // ------------------------------------------
 
-            <h2>
-              Vendor Application Update
-            </h2>
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid vendor ID.",
+        });
+      }
 
-            <p>
-              Hi
-              <strong>${vendor.firstName}</strong>,
-            </p>
+      // ------------------------------------------
+      // FIND VENDOR
+      // ------------------------------------------
 
-            <p>
-              Unfortunately, your store
-              "<strong>${vendor.storeName}</strong>"
-              application was not approved at this time.
-            </p>
+      const vendor =
+        await User.findOne({
+          _id: id,
+          role: "vendor",
+        });
 
-            ${
-              typeof reason === "string" &&
-              reason.trim()
-                ? `
-                  <p>
-                    <strong>Reason:</strong>
-                    ${reason.trim().slice(0, 300)}
-                  </p>
-                `
-                : ""
-            }
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Vendor not found.",
+        });
+      }
 
-            <p>
-              You may contact support if you would
-              like to reapply.
-            </p>
+      // ------------------------------------------
+      // REJECT
+      // ------------------------------------------
 
-          </div>
-        `,
+      vendor.vendorStatus =
+        "rejected";
+
+      await vendor.save();
+
+      // ------------------------------------------
+      // SEND EMAIL
+      // ------------------------------------------
+
+      try {
+        await sendEmail({
+          to: vendor.email,
+
+          subject:
+            "Update on Your NextTech Vendor Application",
+
+          html: `
+            <div
+              style="
+                font-family: Arial, sans-serif;
+                max-width: 480px;
+                margin: 0 auto;
+              "
+            >
+
+              <h2>
+                Vendor Application Update
+              </h2>
+
+              <p>
+                Hi
+                <strong>
+                  ${vendor.firstName}
+                </strong>,
+              </p>
+
+              <p>
+                Unfortunately, your store
+                "<strong>
+                  ${vendor.storeName}
+                </strong>"
+                application was not approved
+                at this time.
+              </p>
+
+              ${
+                typeof reason ===
+                  "string" &&
+                reason.trim()
+                  ? `
+                    <p>
+                      <strong>
+                        Reason:
+                      </strong>
+                      ${reason
+                        .trim()
+                        .slice(
+                          0,
+                          300
+                        )}
+                    </p>
+                  `
+                  : ""
+              }
+
+              <p>
+                You may contact support
+                if you would like to reapply.
+              </p>
+
+            </div>
+          `,
+        });
+      } catch (
+        emailError
+      ) {
+        console.error(
+          "VENDOR REJECTION EMAIL ERROR:",
+          emailError.message
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Vendor rejected.",
+        vendor:
+          formatVendorForAdmin(
+            vendor
+          ),
       });
-    } catch (emailError) {
+    } catch (error) {
       console.error(
-        "VENDOR REJECTION EMAIL ERROR:",
-        emailError.message
+        "REJECT VENDOR ERROR:",
+        error
       );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to reject vendor.",
+      });
     }
-
-    return res.status(200).json({
-      success: true,
-      message: "Vendor rejected.",
-      vendor: formatVendorForAdmin(vendor),
-    });
-  } catch (error) {
-    console.error(
-      "REJECT VENDOR ERROR:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to reject vendor.",
-    });
-  }
-};
+  };

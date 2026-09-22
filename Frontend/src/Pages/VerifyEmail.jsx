@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
@@ -33,17 +32,11 @@ function VerifyEmail() {
           );
         }
 
-        // Backend verification successful hai.
-        // Backend user/token return nahi karta,
-        // isliye data.user.role access nahi karna.
-
         setStatus("success");
         setMessage(
           data.message || "Email verified successfully!"
         );
 
-        // Verification ke baad login page par bhej dein.
-        // User apne verified account se normally login karega.
         setTimeout(() => {
           navigate("/login", { replace: true });
         }, 1800);
@@ -66,9 +59,6 @@ function VerifyEmail() {
       <div className="w-full max-w-md">
         <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm text-center">
 
-          {/* =========================
-              LOADING
-          ========================== */}
           {status === "loading" && (
             <>
               <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
@@ -88,9 +78,6 @@ function VerifyEmail() {
             </>
           )}
 
-          {/* =========================
-              SUCCESS
-          ========================== */}
           {status === "success" && (
             <>
               <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
@@ -114,9 +101,6 @@ function VerifyEmail() {
             </>
           )}
 
-          {/* =========================
-              ERROR
-          ========================== */}
           {status === "error" && (
             <>
               <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
@@ -150,4 +134,3 @@ function VerifyEmail() {
 }
 
 export default VerifyEmail;
-
