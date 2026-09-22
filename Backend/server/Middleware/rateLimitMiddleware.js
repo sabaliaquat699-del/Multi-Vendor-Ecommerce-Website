@@ -1,25 +1,23 @@
 import rateLimit from "express-rate-limit";
 
 // ======================================================
-// COMMON OPTIONS
+// COMMON RATE LIMIT OPTIONS
 // ======================================================
 
 const commonOptions = {
+  // Rate-limit headers browser/client ko provide honge
   standardHeaders: true,
+
+  // Purane X-RateLimit-* headers disable
   legacyHeaders: false,
 
-  // Vercel / reverse proxy ke Forwarded header
-  // validation warning ko disable karta hai.
-  validate: {
-    forwardedHeader: false,
-  },
-
-  // Explicit key generator
-  // Is se express-rate-limit ka default
-  // forwarded-header validation path use nahi hoga.
-  keyGenerator: (req) => {
-    return req.ip || "unknown-ip";
-  },
+  // Vercel reverse proxy ke Forwarded /
+  // X-Forwarded-For validation warnings disable.
+  //
+  // Hum app.js mein:
+  // app.set("trust proxy", 1)
+  // already use kar rahe hain.
+  validate: false,
 };
 
 // ======================================================
@@ -28,7 +26,11 @@ const commonOptions = {
 
 export const forgotPasswordLimiter = rateLimit({
   ...commonOptions,
+
+  // 15 minutes
   windowMs: 15 * 60 * 1000,
+
+  // Maximum 5 requests
   max: 5,
 
   message: {
@@ -44,7 +46,11 @@ export const forgotPasswordLimiter = rateLimit({
 
 export const resendVerificationLimiter = rateLimit({
   ...commonOptions,
+
+  // 15 minutes
   windowMs: 15 * 60 * 1000,
+
+  // Maximum 5 requests
   max: 5,
 
   message: {
@@ -60,7 +66,11 @@ export const resendVerificationLimiter = rateLimit({
 
 export const loginLimiter = rateLimit({
   ...commonOptions,
+
+  // 15 minutes
   windowMs: 15 * 60 * 1000,
+
+  // Maximum 10 login attempts
   max: 10,
 
   message: {
@@ -76,7 +86,11 @@ export const loginLimiter = rateLimit({
 
 export const registerLimiter = rateLimit({
   ...commonOptions,
+
+  // 1 hour
   windowMs: 60 * 60 * 1000,
+
+  // Maximum 10 registrations
   max: 10,
 
   message: {
