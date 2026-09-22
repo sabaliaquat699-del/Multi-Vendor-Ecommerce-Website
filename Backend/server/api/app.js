@@ -31,14 +31,18 @@ dotenv.config({
   path: path.join(__dirname, "..", ".env"),
 });
 
+// ======================================================
+// EXPRESS APP
+// ======================================================
+
 const app = express();
 
 // ======================================================
 // VERCEL REVERSE PROXY
 // ======================================================
 
-// Vercel ke reverse proxy ke peeche Express ko
-// client IP / X-Forwarded-For correctly handle karne deta hai.
+// Vercel reverse proxy ke peeche Express ko
+// X-Forwarded-For/client IP correctly handle karne deta hai.
 app.set("trust proxy", 1);
 
 // ======================================================
@@ -62,13 +66,22 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.warn("Blocked by CORS:", origin);
-        callback(new Error("Not allowed by CORS"));
+      // Browser ke bahar requests / server-to-server requests
+      if (!origin) {
+        return callback(null, true);
       }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.warn("Blocked by CORS:", origin);
+
+      return callback(
+        new Error("Not allowed by CORS")
+      );
     },
+
     credentials: true,
   })
 );
@@ -77,7 +90,11 @@ app.use(
 // JSON + BODY SIZE LIMIT
 // ======================================================
 
-app.use(express.json({ limit: "10kb" }));
+app.use(
+  express.json({
+    limit: "10kb",
+  })
+);
 
 // ======================================================
 // NOSQL INJECTION / HPP / XSS GUARDS
@@ -99,7 +116,11 @@ app.use(xssClean);
 app.use(
   "/uploads",
   express.static(
-    path.join(__dirname, "..", "uploads")
+    path.join(
+      __dirname,
+      "..",
+      "uploads"
+    )
   )
 );
 
@@ -109,23 +130,26 @@ app.use(
 
 // Har request ke liye DB connection ensure karega.
 
-app.use(async (req, res, next) => {
-  try {
-    await connectDB();
-    next();
-  } catch (error) {
-    console.error(
-      "Database connection failed:",
-      error.message
-    );
+app.use(
+  async (req, res, next) => {
+    try {
+      await connectDB();
 
-    return res.status(503).json({
-      success: false,
-      message:
-        "Database connection failed. Please try again shortly.",
-    });
+      next();
+    } catch (error) {
+      console.error(
+        "Database connection failed:",
+        error.message
+      );
+
+      return res.status(503).json({
+        success: false,
+        message:
+          "Database connection failed. Please try again shortly.",
+      });
+    }
   }
-});
+);
 
 // ======================================================
 // AUTH ROUTES
@@ -199,9 +223,9 @@ app.get(
 
       const query = {};
 
-      // ------------------------------------------
+      // ==================================================
       // SEARCH
-      // ------------------------------------------
+      // ==================================================
 
       if (search) {
         const searchRegex = {
@@ -228,9 +252,9 @@ app.get(
         ];
       }
 
-      // ------------------------------------------
+      // ==================================================
       // CATEGORY
-      // ------------------------------------------
+      // ==================================================
 
       if (
         category &&
@@ -242,9 +266,9 @@ app.get(
         };
       }
 
-      // ------------------------------------------
+      // ==================================================
       // SORT
-      // ------------------------------------------
+      // ==================================================
 
       let sortOption = {
         _id: -1,
@@ -264,20 +288,22 @@ app.get(
         };
       }
 
-      // ------------------------------------------
+      // ==================================================
       // COUNT
-      // ------------------------------------------
+      // ==================================================
 
       const totalProducts =
-        await Product.countDocuments(query);
+        await Product.countDocuments(
+          query
+        );
 
       const totalPages = Math.ceil(
         totalProducts / limit
       );
 
-      // ------------------------------------------
+      // ==================================================
       // PRODUCTS
-      // ------------------------------------------
+      // ==================================================
 
       const products =
         await Product.find(query)
