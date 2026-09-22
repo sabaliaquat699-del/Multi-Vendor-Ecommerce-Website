@@ -1,28 +1,33 @@
 import rateLimit from "express-rate-limit";
 
 // ======================================================
-// COMMON RATE LIMIT OPTIONS
+// COMMON OPTIONS
 // ======================================================
 
 const commonOptions = {
   standardHeaders: true,
   legacyHeaders: false,
 
-  // Vercel ke Forwarded header validation warning ko
-  // disable karta hai.
+  // Vercel / reverse proxy ke Forwarded header
+  // validation warning ko disable karta hai.
   validate: {
     forwardedHeader: false,
+  },
+
+  // Explicit key generator
+  // Is se express-rate-limit ka default
+  // forwarded-header validation path use nahi hoga.
+  keyGenerator: (req) => {
+    return req.ip || "unknown-ip";
   },
 };
 
 // ======================================================
 // FORGOT PASSWORD
-// Max 5 requests per 15 minutes per IP
 // ======================================================
 
 export const forgotPasswordLimiter = rateLimit({
   ...commonOptions,
-
   windowMs: 15 * 60 * 1000,
   max: 5,
 
@@ -35,12 +40,10 @@ export const forgotPasswordLimiter = rateLimit({
 
 // ======================================================
 // RESEND VERIFICATION
-// Max 5 requests per 15 minutes per IP
 // ======================================================
 
 export const resendVerificationLimiter = rateLimit({
   ...commonOptions,
-
   windowMs: 15 * 60 * 1000,
   max: 5,
 
@@ -53,12 +56,10 @@ export const resendVerificationLimiter = rateLimit({
 
 // ======================================================
 // LOGIN
-// Max 10 login attempts per 15 minutes per IP
 // ======================================================
 
 export const loginLimiter = rateLimit({
   ...commonOptions,
-
   windowMs: 15 * 60 * 1000,
   max: 10,
 
@@ -71,12 +72,10 @@ export const loginLimiter = rateLimit({
 
 // ======================================================
 // REGISTER
-// Max 10 registrations per hour per IP
 // ======================================================
 
 export const registerLimiter = rateLimit({
   ...commonOptions,
-
   windowMs: 60 * 60 * 1000,
   max: 10,
 
