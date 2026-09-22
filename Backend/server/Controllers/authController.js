@@ -1,190 +1,51 @@
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import Customer from "../models/Customer.js";
-import Vendor from "../models/Vendor.js";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+
+import User from "../models/User.js";
 import Admin from "../models/Admin.js";
 import sendEmail from "../utils/sendEmail.js";
 
 // ======================================================
-// CONFIG CONSTANTS
+// Generate JWT
 // ======================================================
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-const VERIFICATION_TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-
-// NEW: frontend ka default URL (Vite 5174 par chal raha hai)
-const DEFAULT_CLIENT_URL = "http://localhost:5174";
-
-// ======================================================
-// GENERATE TOKEN
-// ======================================================
-const generateToken = (user, role) => {
+const generateToken = (user) => {
   return jwt.sign(
-    { id: user._id, role },
+    {
+      id: user._id,
+      role: user.role,
+    },
     process.env.JWT_SECRET,
-    { expiresIn: "7d" }
+    {
+      expiresIn: "7d",
+    }
   );
 };
 
 // ======================================================
-// FORMAT USER
+// Generate Verification Token
 // ======================================================
-const formatCustomer = (user) => ({
-  id: user._id,
-  role: "customer",
-  firstName: user.firstName,
-  lastName: user.lastName,
-  email: user.email,
-  phone: user.phone,
-  profileImage: user.profileImage,
-  address: user.address,
-  city: user.city,
-  country: user.country,
-  isVerified: user.isVerified,
-});
 
-const formatVendor = (user) => ({
-  id: user._id,
-  role: "vendor",
-  firstName: user.firstName,
-  lastName: user.lastName,
-  email: user.email,
-  phone: user.phone,
-  profileImage: user.profileImage,
-  address: user.address,
-  city: user.city,
-  country: user.country,
-  storeName: user.storeName,
-  storeDescription: user.storeDescription,
-  businessName: user.businessName,
-  businessAddress: user.businessAddress,
-  vendorStatus: user.vendorStatus,
-  isVerified: user.isVerified,
-});
-
-const formatAdmin = (user) => ({
-  id: user._id,
-  role: "admin",
-  firstName: user.firstName,
-  lastName: user.lastName,
-  email: user.email,
-  isVerified: user.isVerified,
-});
-
-// ======================================================
-// Helper: check email across all three collections
-// ======================================================
-const emailExistsAnywhere = async (email) => {
-  const [existingCustomer, existingVendor, existingAdmin] = await Promise.all([
-    Customer.findOne({ email }),
-    Vendor.findOne({ email }),
-    Admin.findOne({ email }),
-  ]);
-  return Boolean(existingCustomer || existingVendor || existingAdmin);
+const generateVerificationToken = () => {
+  return crypto.randomBytes(32).toString("hex");
 };
 
 // ======================================================
-// Helper: find a user (customer, vendor, or admin) by
-// email, optionally including hidden fields via `withSelect`.
+// Hash Verification Token
 // ======================================================
-const findUserByEmail = async (email, withSelect = "") => {
-  let user = await Customer.findOne({ email }).select(withSelect);
-  if (user) return { user, role: "customer", Model: Customer };
 
-  user = await Vendor.findOne({ email }).select(withSelect);
-  if (user) return { user, role: "vendor", Model: Vendor };
-
-  user = await Admin.findOne({ email }).select(withSelect);
-  if (user) return { user, role: "admin", Model: Admin };
-
-  return { user: null, role: null, Model: null };
-};
-
-// ======================================================
-// Helper: generate + save a hashed verification token on
-// the given user doc, then email the raw (unhashed) token
-// as a link. Reused by register() (customers),
-// resendVerification(), and the ADMIN approve-vendor route.
-//
-// CHANGED: ab yeh export hai, aur `approved: true` dene par
-// email ka text "vendor account approved" wala ho jata hai.
-// ======================================================
-export const createAndSendVerificationEmail = async (
-  user,
-  { approved = false } = {}
-) => {
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-  user.verificationToken = hashedToken;
-  user.verificationTokenExpire = Date.now() + VERIFICATION_TOKEN_EXPIRY_MS;
-  await user.save({ validateBeforeSave: false });
-
-  const clientUrl = process.env.CLIENT_URL || DEFAULT_CLIENT_URL;
-  const verifyUrl = `${clientUrl}/verify-email/${rawToken}`;
-
-  // CHANGED: approve hone wali email ka alag intro
-  const intro = approved
-    ? `Great news! Your vendor account has been <strong>approved</strong> by our admin.
-       Please confirm your email address to activate your account and start selling.
-       This link will expire in <strong>24 hours</strong>.`
-    : `Thanks for signing up on NextTech! Please confirm your email address
-       to activate your account. This link will expire in <strong>24 hours</strong>.`;
-
-  const subject = approved
-    ? "Your NextTech vendor account is approved - verify your email"
-    : "Verify your NextTech account";
-
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-      <h2>Verify your email</h2>
-      <p>${intro}</p>
-      <p>
-        <a href="${verifyUrl}"
-           style="display:inline-block;padding:12px 24px;background:#171717;
-                  color:#fff;text-decoration:none;border-radius:8px;">
-          Verify Email
-        </a>
-      </p>
-      <p>If you didn't create this account, you can safely ignore this email.</p>
-      <p style="color:#888;font-size:12px;">
-        Or copy this link: ${verifyUrl}
-      </p>
-    </div>
-  `;
-
-  await sendEmail({
-    to: user.email,
-    subject,
-    html,
-  });
-
-  // NEW: email chali gayi, terminal mein confirm karein
-  console.log("VERIFICATION EMAIL SENT TO:", user.email);
-
-  // NEW: testing ke liye link terminal mein (production mein print nahi hoga)
-  if (process.env.NODE_ENV !== "production") {
-    console.log("VERIFY LINK:", verifyUrl);
-  }
+const hashToken = (token) => {
+  return crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
 };
 
 // ======================================================
 // REGISTER
-// POST /api/auth/register
-//
-// NOTE: `role` from the client is only ever mapped to
-// "vendor" or "customer" below — there is no code path
-// here that can create an "admin" account. Admins are
-// created exclusively via server/scripts/createAdmin.js.
-//
-// CHANGED:
-//  - Customer -> verification email foran jati hai.
-//  - Vendor   -> status "pending", koi email nahi. Email
-//                admin ke approve karne ke baad jayegi.
 // ======================================================
+
 export const register = async (req, res) => {
   try {
     const {
@@ -193,174 +54,421 @@ export const register = async (req, res) => {
       email,
       phone,
       password,
-      role,
+      confirmPassword,
       address,
       city,
       country,
+      role,
       storeName,
       storeDescription,
       businessName,
       businessAddress,
     } = req.body;
 
-    if (typeof email !== "string" || typeof password !== "string") {
+    // ------------------------------------------
+    // Required fields
+    // ------------------------------------------
+
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !phone ||
+      !password ||
+      !confirmPassword
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid request format.",
+        message: "Please fill all required fields.",
       });
     }
 
-    if (!firstName?.trim() || !email.trim() || !password) {
+    // ------------------------------------------
+    // Password confirmation
+    // ------------------------------------------
+
+    if (password !== confirmPassword) {
       return res.status(400).json({
         success: false,
-        message: "First name, email and password are required.",
+        message: "Passwords do not match.",
       });
     }
 
-    if (!PASSWORD_REGEX.test(password)) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number.",
-      });
-    }
+    // ------------------------------------------
+    // Vendor-specific required field
+    // ------------------------------------------
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const finalRole = role === "vendor" ? "vendor" : "customer";
-
-    if (finalRole === "vendor" && !storeName?.trim()) {
+    if (role === "vendor" && !storeName) {
       return res.status(400).json({
         success: false,
         message: "Store name is required for vendor accounts.",
       });
     }
 
-    const alreadyExists = await emailExistsAnywhere(normalizedEmail);
-    if (alreadyExists) {
-      return res.status(409).json({
+    // ------------------------------------------
+    // Check existing user
+    // ------------------------------------------
+
+    const existingUser = await User.findOne({
+      email: email.toLowerCase(),
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
         success: false,
         message: "An account with this email already exists.",
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // ------------------------------------------
+    // Validate role
+    // ------------------------------------------
 
-    const profileImage = req.file
-      ? `/uploads/profile-images/${req.file.filename}`
-      : "";
+    const userRole =
+      role === "vendor" ? "vendor" : "customer";
 
-    const baseData = {
-      firstName: firstName.trim(),
-      lastName: lastName?.trim() || "",
-      email: normalizedEmail,
-      phone: phone?.trim() || "",
+    // ------------------------------------------
+    // Hash password
+    // ------------------------------------------
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // ------------------------------------------
+    // Create user
+    // ------------------------------------------
+
+    const userData = {
+      firstName,
+      lastName,
+      email: email.toLowerCase(),
+      phone,
       password: hashedPassword,
-      address: address?.trim() || "",
-      city: city?.trim() || "",
-      country: country?.trim() || "",
-      profileImage,
+      address,
+      city,
+      country,
+      role: userRole,
+
       isVerified: false,
+
+      profileImage: req.file
+        ? req.file.path
+        : null,
     };
 
-    // ---------------- VENDOR ----------------
-    if (finalRole === "vendor") {
-      await Vendor.create({
-        ...baseData,
-        storeName: storeName.trim(),
-        storeDescription: storeDescription?.trim() || "",
-        businessName: businessName?.trim() || "",
-        businessAddress: businessAddress?.trim() || "",
-        vendorStatus: "pending",
-      });
+    // ------------------------------------------
+    // Vendor starts as pending
+    // ------------------------------------------
 
-      // CHANGED: vendor ko yahan email NAHI bheji jati
+    if (userRole === "vendor") {
+      userData.vendorStatus = "pending";
+
+      userData.storeName = storeName || "";
+      userData.storeDescription = storeDescription || "";
+      userData.businessName = businessName || "";
+      userData.businessAddress = businessAddress || "";
+
+      // Vendor does NOT get verification
+      // email during registration.
+      userData.verificationToken = null;
+      userData.verificationTokenExpire = null;
+    }
+
+    // ------------------------------------------
+    // Customer verification token
+    // ------------------------------------------
+
+    if (userRole === "customer") {
+      const verificationToken =
+        generateVerificationToken();
+
+      userData.verificationToken =
+        hashToken(verificationToken);
+
+      userData.verificationTokenExpire =
+        new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      const user = await User.create(userData);
+
+      // ----------------------------------------
+      // Customer verification email
+      // ----------------------------------------
+
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        "http://localhost:5173";
+
+      const verificationUrl =
+        `${frontendUrl}/verify-email/${verificationToken}`;
+
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: "Verify Your Email",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+
+              <h2>Verify Your Email</h2>
+
+              <p>Hello ${user.firstName},</p>
+
+              <p>
+                Thank you for registering with ElectroMarket.
+              </p>
+
+              <p>
+                Please click the button below to verify your email address.
+              </p>
+
+              <div style="margin: 30px 0;">
+                <a
+                  href="${verificationUrl}"
+                  style="
+                    display: inline-block;
+                    padding: 12px 24px;
+                    background: #171717;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 6px;
+                  "
+                >
+                  Verify Email
+                </a>
+              </div>
+
+              <p>
+                This verification link will expire in 24 hours.
+              </p>
+
+            </div>
+          `,
+        });
+      } catch (emailError) {
+        console.error(
+          "Customer verification email error:",
+          emailError
+        );
+      }
+
       return res.status(201).json({
         success: true,
-        requiresVerification: false,
-        pendingApproval: true,
+        pendingApproval: false,
         message:
-          "Registered successfully! Your vendor account is waiting for admin approval. Once approved, you will receive an email to verify your account and log in.",
+          "Customer registered successfully. Please check your email to verify your account.",
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+          isVerified: user.isVerified,
+        },
+      });
+    }
+
+    // ------------------------------------------
+    // Vendor registration
+    // ------------------------------------------
+
+    const vendor = await User.create(userData);
+
+    return res.status(201).json({
+      success: true,
+      pendingApproval: true,
+      message:
+        "Vendor registered successfully. Your account is pending admin approval.",
+      user: {
+        id: vendor._id,
+        firstName: vendor.firstName,
+        lastName: vendor.lastName,
+        email: vendor.email,
+        role: vendor.role,
+        vendorStatus: vendor.vendorStatus,
+        isVerified: vendor.isVerified,
+      },
+    });
+  } catch (error) {
+    console.error("Register error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error during registration.",
+      error: error.message,
+    });
+  }
+};
+
+// ======================================================
+// LOGIN
+// ======================================================
+
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required.",
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // ------------------------------------------
+    // Pehle Admin collection check karein
+    // ------------------------------------------
+
+    let account = await Admin.findOne({
+      email: normalizedEmail,
+    }).select("+password");
+
+    // ------------------------------------------
+    // Agar admin nahi mila, User collection
+    // (customer / vendor) check karein
+    // ------------------------------------------
+
+    if (!account) {
+      account = await User.findOne({
         email: normalizedEmail,
       });
     }
 
-    // ---------------- CUSTOMER ----------------
-    const savedUser = await Customer.create(baseData);
-
-    try {
-      await createAndSendVerificationEmail(savedUser);
-    } catch (emailError) {
-      console.error(
-        "SEND VERIFICATION EMAIL ERROR:",
-        emailError.code,
-        emailError.message
-      );
+    if (!account) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password.",
+      });
     }
 
-    return res.status(201).json({
+    const passwordMatch = await bcrypt.compare(
+      password,
+      account.password
+    );
+
+    if (!passwordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password.",
+      });
+    }
+
+    // ------------------------------------------
+    // Vendor approval check
+    // (Admin model mein vendorStatus exist nahi
+    // karta, isliye ye automatically skip ho jata
+    // hai admin ke liye)
+    // ------------------------------------------
+
+    if (
+      account.role === "vendor" &&
+      account.vendorStatus !== "approved"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Your vendor account has not been approved by the admin yet.",
+      });
+    }
+
+    // ------------------------------------------
+    // Email verification check
+    // ------------------------------------------
+
+    if (!account.isVerified) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Please verify your email before logging in.",
+      });
+    }
+
+    const token = generateToken(account);
+
+    return res.status(200).json({
       success: true,
-      requiresVerification: true,
-      pendingApproval: false,
-      message:
-        "Registered successfully! Please check your email to verify your account before logging in.",
-      email: normalizedEmail,
+      message: "Login successful.",
+      token,
+      user: {
+        id: account._id,
+        firstName: account.firstName,
+        lastName: account.lastName,
+        email: account.email,
+        role: account.role,
+        vendorStatus: account.vendorStatus,
+        isVerified: account.isVerified,
+      },
     });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: "An account with this email already exists.",
-      });
-    }
+    console.error("Login error:", error);
 
-    if (error.name === "ValidationError") {
-      const firstError = Object.values(error.errors)[0]?.message;
-      return res.status(400).json({
-        success: false,
-        message: firstError || "Validation error during registration.",
-      });
-    }
-
-    console.error("REGISTER ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error during registration.",
+      message: "Server error during login.",
+      error: error.message,
     });
   }
 };
 
 // ======================================================
 // VERIFY EMAIL
-// POST /api/auth/verify-email/:token
-// (Admins never go through this — they're pre-verified.)
 // ======================================================
+//
+// FIX (2026): Pehle is function ke end mein
+// `verificationToken` aur `verificationTokenExpire`
+// ko turant `null` kar diya jata tha. Isse ye bug aata
+// tha: agar frontend se verify-email API 2 dafa call
+// ho jaye (React StrictMode dev mode mein useEffect
+// jaanbojh kar 2 baar chalta hai, ya user double-click
+// kar de, ya slow network par retry ho jaye) — to
+// pehli call verify kar ke token null kar deti thi,
+// aur foran baad aane wali doosri call ko wo token
+// DB mein nahi milta tha (kyunke null ho chuka hota),
+// is liye "invalid or expired" error aa jata tha —
+// HALANKI verification pehli call mein successful ho
+// chuki hoti thi.
+//
+// Fix: token ko turant null nahi kiya ja raha. Isse
+// koi security risk nahi hai kyunke token dobara use
+// hone se sirf `isVerified = true` set hota hai (jo
+// idempotent operation hai — dobara set karne se kuch
+// naya nuksan nahi). Token apne aap 24 ghante baad
+// expire ho jayega.
+// ======================================================
+
 export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
 
-    if (!token || typeof token !== "string") {
+    if (!token) {
       return res.status(400).json({
         success: false,
-        message: "Invalid verification link.",
+        message: "Verification token is required.",
       });
     }
 
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    // Trim taake email client / browser ki taraf se
+    // aayi accidental whitespace ya newline se token
+    // corrupt na ho.
+    const cleanToken = token.trim();
 
-    let user = await Customer.findOne({
+    // ------------------------------------------
+    // Hash token received from URL
+    // ------------------------------------------
+
+    const hashedToken = hashToken(cleanToken);
+
+    // ------------------------------------------
+    // Find user
+    // ------------------------------------------
+
+    const user = await User.findOne({
       verificationToken: hashedToken,
-      verificationTokenExpire: { $gt: Date.now() },
-    }).select("+verificationToken +verificationTokenExpire");
-
-    let role = "customer";
-
-    if (!user) {
-      user = await Vendor.findOne({
-        verificationToken: hashedToken,
-        verificationTokenExpire: { $gt: Date.now() },
-      }).select("+verificationToken +verificationTokenExpire");
-      role = "vendor";
-    }
+      verificationTokenExpire: {
+        $gt: new Date(),
+      },
+    }).select(
+      "+verificationToken +verificationTokenExpire"
+    );
 
     if (!user) {
       return res.status(400).json({
@@ -370,340 +478,325 @@ export const verifyEmail = async (req, res) => {
       });
     }
 
-    // CHANGED: agar vendor abhi approved nahi hai (jaise purane flow ka
-    // token), to verify na hone dein aur login token bhi na dein.
-    if (role === "vendor" && user.vendorStatus !== "approved") {
+    // ------------------------------------------
+    // Vendor must be approved
+    // ------------------------------------------
+
+    if (
+      user.role === "vendor" &&
+      user.vendorStatus !== "approved"
+    ) {
       return res.status(403).json({
         success: false,
-        pendingApproval: true,
         message:
-          "Your vendor account is still waiting for admin approval. You will receive a new verification email once it is approved.",
+          "Your vendor account has not been approved yet.",
       });
     }
 
-    user.isVerified = true;
-    user.verificationToken = undefined;
-    user.verificationTokenExpire = undefined;
-    await user.save({ validateBeforeSave: false });
+    // ------------------------------------------
+    // Already verified
+    // (Double-call ya link dobara open hone par
+    // yahan se hi success response chala jata hai,
+    // kyunke token ab null nahi kiya jata.)
+    // ------------------------------------------
 
-    const token_ = generateToken(user, role);
+    if (user.isVerified) {
+      return res.status(200).json({
+        success: true,
+        message: "Email is already verified.",
+      });
+    }
+
+    // ------------------------------------------
+    // Verify
+    // ------------------------------------------
+
+    user.isVerified = true;
+
+    // NOTE: Token ko jaanbojh kar null NAHI kiya ja
+    // raha — upar comment mein wajah likhi hai.
+
+    await user.save();
 
     return res.status(200).json({
       success: true,
-      message: "Email verified successfully! You are now logged in.",
-      token: token_,
-      user: role === "vendor" ? formatVendor(user) : formatCustomer(user),
+      message: "Email verified successfully.",
     });
   } catch (error) {
-    console.error("VERIFY EMAIL ERROR:", error);
+    console.error("Verify email error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Server error while verifying email.",
+      error: error.message,
     });
   }
 };
 
 // ======================================================
-// RESEND VERIFICATION EMAIL
-// POST /api/auth/resend-verification
+// RESEND VERIFICATION
 // ======================================================
-export const resendVerification = async (req, res) => {
-  const genericResponse = {
-    success: true,
-    message:
-      "If an account with that email exists and is not yet verified, a new verification link has been sent.",
-  };
 
+export const resendVerification = async (req, res) => {
   try {
     const { email } = req.body;
 
-    if (typeof email !== "string" || !email.trim()) {
+    if (!email) {
       return res.status(400).json({
         success: false,
         message: "Email is required.",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-    // CHANGED: ab `role` bhi le rahe hain
-    const { user, role } = await findUserByEmail(normalizedEmail);
-
-    // NEW: terminal mein saaf nazar aaye ke email kyun gayi ya nahi gayi
-    if (!user) {
-      console.log("RESEND: account not found for", normalizedEmail);
-    } else if (user.isVerified) {
-      console.log("RESEND: already verified, email not sent to", normalizedEmail);
-    }
-
-    if (user && !user.isVerified) {
-      // CHANGED: vendor ko email tabhi jayegi jab admin approve kar chuka ho
-      const vendorNotApproved =
-        role === "vendor" && user.vendorStatus !== "approved";
-
-      if (vendorNotApproved) {
-        console.log("RESEND: vendor not approved yet, email not sent to", normalizedEmail);
-      } else {
-        try {
-          await createAndSendVerificationEmail(user);
-        } catch (emailError) {
-          console.error(
-            "RESEND VERIFICATION EMAIL ERROR:",
-            emailError.code,
-            emailError.message
-          );
-        }
-      }
-    }
-
-    return res.status(200).json(genericResponse);
-  } catch (error) {
-    console.error("RESEND VERIFICATION ERROR:", error);
-    return res.status(200).json(genericResponse);
-  }
-};
-
-// ======================================================
-// LOGIN
-// POST /api/auth/login
-// Works for customer, vendor AND admin — role is looked
-// up automatically via findUserByEmail() across all three
-// collections, so admins log in through this same endpoint
-// and the frontend already redirects role === "admin" to
-// /admin.
-// ======================================================
-export const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (typeof email !== "string" || typeof password !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid request format.",
-      });
-    }
-
-    if (!email.trim() || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Email and password are required.",
-      });
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const { user, role } = await findUserByEmail(
-      normalizedEmail,
-      "+password +failedLoginAttempts +lockUntil"
-    );
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+    });
 
     if (!user) {
-      return res.status(401).json({
+      return res.status(404).json({
         success: false,
-        message: "Invalid email or password.",
+        message: "User not found.",
       });
     }
 
-    if (user.lockUntil && user.lockUntil > Date.now()) {
-      const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
-      return res.status(423).json({
+    if (user.isVerified) {
+      return res.status(400).json({
         success: false,
-        message: `Too many failed attempts. Please try again in ${minutesLeft} minute(s).`,
+        message: "Email is already verified.",
       });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password);
-
-    if (!passwordMatch) {
-      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-
-      if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
-        user.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
-        user.failedLoginAttempts = 0;
-      }
-
-      await user.save({ validateBeforeSave: false });
-
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password.",
-      });
-    }
-
-    if (user.failedLoginAttempts > 0 || user.lockUntil) {
-      user.failedLoginAttempts = 0;
-      user.lockUntil = null;
-      await user.save({ validateBeforeSave: false });
-    }
-
-    // CHANGED: vendor ke liye pehle admin approval check hota hai
-    if (role === "vendor") {
-      if (user.vendorStatus === "rejected") {
-        return res.status(403).json({
-          success: false,
-          rejected: true,
-          message:
-            "Your vendor application was not approved. Please contact support for more information.",
-        });
-      }
-
-      if (user.vendorStatus !== "approved") {
-        return res.status(403).json({
-          success: false,
-          pendingApproval: true,
-          message:
-            "Your vendor account is waiting for admin approval. You will receive an email once it is approved.",
-        });
-      }
-    }
-
-    // Customer: email verify hona zaroori.
-    // Vendor: approve ho chuka hai, ab email verify hona zaroori.
-    if (!user.isVerified) {
+    // Vendor cannot request verification
+    // until admin approval
+    if (
+      user.role === "vendor" &&
+      user.vendorStatus !== "approved"
+    ) {
       return res.status(403).json({
         success: false,
-        notVerified: true,
         message:
-          "Please verify your email before logging in. Check your inbox for the verification link, or request a new one.",
+          "Your vendor account must be approved by the admin first.",
       });
     }
 
-    const token = generateToken(user, role);
+    // ------------------------------------------
+    // Generate NEW token
+    // ------------------------------------------
 
-    const formattedUser =
-      role === "vendor"
-        ? formatVendor(user)
-        : role === "admin"
-        ? formatAdmin(user)
-        : formatCustomer(user);
+    const verificationToken =
+      generateVerificationToken();
+
+    const hashedToken =
+      hashToken(verificationToken);
+
+    user.verificationToken = hashedToken;
+
+    user.verificationTokenExpire =
+      new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await user.save();
+
+    // ------------------------------------------
+    // Verification URL
+    // ------------------------------------------
+
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      "http://localhost:5173";
+
+    const verificationUrl =
+      `${frontendUrl}/verify-email/${verificationToken}`;
+
+    // ------------------------------------------
+    // Send email
+    // ------------------------------------------
+
+    await sendEmail({
+      to: user.email,
+      subject: "Verify Your Email",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+
+          <h2>Verify Your Email</h2>
+
+          <p>Hello ${user.firstName},</p>
+
+          <p>
+            Please click the button below to verify your email address.
+          </p>
+
+          <div style="margin: 30px 0;">
+            <a
+              href="${verificationUrl}"
+              style="
+                display: inline-block;
+                padding: 12px 24px;
+                background: #171717;
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+              "
+            >
+              Verify Email
+            </a>
+          </div>
+
+          <p>
+            This link will expire in 24 hours.
+          </p>
+
+        </div>
+      `,
+    });
 
     return res.status(200).json({
       success: true,
-      message: "Login successful.",
-      token,
-      user: formattedUser,
+      message:
+        "Verification email sent successfully.",
     });
   } catch (error) {
-    console.error("LOGIN ERROR:", error);
+    console.error(
+      "Resend verification error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: "Server error during login.",
+      message:
+        "Server error while resending verification email.",
+      error: error.message,
     });
   }
 };
 
 // ======================================================
 // FORGOT PASSWORD
-// POST /api/auth/forgot-password
-// (Works for admins too, via findUserByEmail.)
 // ======================================================
-export const forgotPassword = async (req, res) => {
-  const genericResponse = {
-    success: true,
-    message:
-      "If an account with that email exists, a password reset link has been sent.",
-  };
 
+export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
 
-    if (typeof email !== "string" || !email.trim()) {
+    if (!email) {
       return res.status(400).json({
         success: false,
         message: "Email is required.",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const { user } = await findUserByEmail(normalizedEmail);
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+    });
 
-    if (user) {
-      const rawToken = crypto.randomBytes(32).toString("hex");
-      const hashedToken = crypto
-        .createHash("sha256")
-        .update(rawToken)
-        .digest("hex");
-
-      user.resetPasswordToken = hashedToken;
-      user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
-      await user.save({ validateBeforeSave: false });
-
-      const clientUrl = process.env.CLIENT_URL || DEFAULT_CLIENT_URL;
-      const resetUrl = `${clientUrl}/reset-password/${rawToken}`;
-
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-          <h2>Reset your password</h2>
-          <p>We received a request to reset your NextTech account password.
-          This link will expire in <strong>15 minutes</strong>.</p>
-          <p>
-            <a href="${resetUrl}"
-               style="display:inline-block;padding:12px 24px;background:#171717;
-                      color:#fff;text-decoration:none;border-radius:8px;">
-              Reset Password
-            </a>
-          </p>
-          <p>If you didn't request this, you can safely ignore this email —
-          your password will not be changed.</p>
-          <p style="color:#888;font-size:12px;">
-            Or copy this link: ${resetUrl}
-          </p>
-        </div>
-      `;
-
-      try {
-        await sendEmail({
-          to: user.email,
-          subject: "Reset your NextTech password",
-          html,
-        });
-        console.log("RESET EMAIL SENT TO:", user.email); // NEW
-      } catch (emailError) {
-        console.error(
-          "SEND RESET EMAIL ERROR:",
-          emailError.code,
-          emailError.message
-        );
-        user.resetPasswordToken = undefined;
-        user.resetPasswordExpire = undefined;
-        await user.save({ validateBeforeSave: false });
-      }
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "No account found with this email.",
+      });
     }
 
-    return res.status(200).json(genericResponse);
+    const resetToken = crypto
+      .randomBytes(32)
+      .toString("hex");
+
+    user.resetPasswordToken = hashToken(resetToken);
+
+    user.resetPasswordExpire = new Date(
+      Date.now() + 15 * 60 * 1000
+    );
+
+    await user.save();
+
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      "http://localhost:5173";
+
+    const resetUrl =
+      `${frontendUrl}/reset-password/${resetToken}`;
+
+    await sendEmail({
+      to: user.email,
+      subject: "Reset Your Password",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+
+          <h2>Reset Your Password</h2>
+
+          <p>Hello ${user.firstName},</p>
+
+          <p>
+            Click the button below to reset your password.
+          </p>
+
+          <div style="margin: 30px 0;">
+            <a
+              href="${resetUrl}"
+              style="
+                display: inline-block;
+                padding: 12px 24px;
+                background: #171717;
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+              "
+            >
+              Reset Password
+            </a>
+          </div>
+
+          <p>
+            This link will expire in 15 minutes.
+          </p>
+
+        </div>
+      `,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Password reset email sent successfully.",
+    });
   } catch (error) {
-    console.error("FORGOT PASSWORD ERROR:", error);
-    return res.status(200).json(genericResponse);
+    console.error(
+      "Forgot password error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while processing forgot password.",
+      error: error.message,
+    });
   }
 };
 
 // ======================================================
 // RESET PASSWORD
-// POST /api/auth/reset-password/:token
 // ======================================================
+
 export const resetPassword = async (req, res) => {
   try {
     const { token } = req.params;
-    const { password, confirmPassword } = req.body;
+
+    const {
+      password,
+      confirmPassword,
+    } = req.body;
 
     if (!token) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or missing reset token.",
+        message: "Reset token is required.",
       });
     }
 
-    if (typeof password !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid request format.",
-      });
-    }
-
-    if (!PASSWORD_REGEX.test(password)) {
+    if (!password || !confirmPassword) {
       return res.status(400).json({
         success: false,
         message:
-          "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number.",
+          "Password and confirm password are required.",
       });
     }
 
@@ -714,52 +807,49 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    const hashedToken = hashToken(token);
 
-    let user = await Customer.findOne({
+    const user = await User.findOne({
       resetPasswordToken: hashedToken,
-      resetPasswordExpire: { $gt: Date.now() },
-    }).select("+resetPasswordToken +resetPasswordExpire");
-
-    if (!user) {
-      user = await Vendor.findOne({
-        resetPasswordToken: hashedToken,
-        resetPasswordExpire: { $gt: Date.now() },
-      }).select("+resetPasswordToken +resetPasswordExpire");
-    }
-
-    if (!user) {
-      user = await Admin.findOne({
-        resetPasswordToken: hashedToken,
-        resetPasswordExpire: { $gt: Date.now() },
-      }).select("+resetPasswordToken +resetPasswordExpire");
-    }
+      resetPasswordExpire: {
+        $gt: new Date(),
+      },
+    });
 
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: "This reset link is invalid or has expired.",
+        message:
+          "This password reset link is invalid or has expired.",
       });
     }
 
-    user.password = await bcrypt.hash(password, 10);
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-    user.failedLoginAttempts = 0;
-    user.lockUntil = null;
+    user.password = await bcrypt.hash(
+      password,
+      12
+    );
+
+    user.resetPasswordToken = null;
+    user.resetPasswordExpire = null;
 
     await user.save();
 
     return res.status(200).json({
       success: true,
       message:
-        "Password reset successfully. You can now log in with your new password.",
+        "Password reset successfully. You can now login.",
     });
   } catch (error) {
-    console.error("RESET PASSWORD ERROR:", error);
+    console.error(
+      "Reset password error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: "Server error while resetting password.",
+      message:
+        "Server error while resetting password.",
+      error: error.message,
     });
   }
 };

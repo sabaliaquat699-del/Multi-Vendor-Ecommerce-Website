@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import crypto from "crypto";
 
 import Customer from "../models/Customer.js";
-import Vendor from "../models/Vendor.js";
+import User from "../models/User.js";
 import Product from "../models/Product.js";
 import sendEmail from "../utils/sendEmail.js";
 
@@ -40,19 +40,26 @@ export const getDashboardStats = async (req, res) => {
       rejectedVendors,
       totalProducts,
     ] = await Promise.all([
+      // Customers are still counted from Customer model
       Customer.countDocuments(),
 
-      Vendor.countDocuments(),
+      // Vendors are stored in User collection
+      User.countDocuments({
+        role: "vendor",
+      }),
 
-      Vendor.countDocuments({
+      User.countDocuments({
+        role: "vendor",
         vendorStatus: "pending",
       }),
 
-      Vendor.countDocuments({
+      User.countDocuments({
+        role: "vendor",
         vendorStatus: "approved",
       }),
 
-      Vendor.countDocuments({
+      User.countDocuments({
+        role: "vendor",
         vendorStatus: "rejected",
       }),
 
@@ -105,8 +112,13 @@ export const getVendors = async (req, res) => {
       query.vendorStatus = status;
     }
 
-    const vendors = await Vendor.find(query)
-      .sort({ createdAt: -1 });
+    // Vendors are stored inside User collection
+    const vendors = await User.find({
+      role: "vendor",
+      ...query,
+    }).sort({
+      createdAt: -1,
+    });
 
     return res.status(200).json({
       success: true,
@@ -153,7 +165,14 @@ export const approveVendor = async (req, res) => {
     // FIND VENDOR
     // ==========================================
 
-    const vendor = await Vendor.findById(id);
+    // Vendor registration uses User model,
+    // so admin approval must also use User.
+    const vendor = await User.findOne({
+      _id: id,
+      role: "vendor",
+    }).select(
+      "+verificationToken +verificationTokenExpire"
+    );
 
     if (!vendor) {
       return res.status(404).json({
@@ -168,28 +187,29 @@ export const approveVendor = async (req, res) => {
 
     vendor.vendorStatus = "approved";
 
+    let verificationToken = null;
+
     // ==========================================
     // GENERATE VERIFICATION TOKEN
     // ==========================================
 
-    let verificationToken = null;
-
     if (!vendor.isVerified) {
+      // Generate RAW token
       verificationToken =
         crypto.randomBytes(32).toString("hex");
 
-      vendor.verificationToken =
-        verificationToken;
+      // Store HASHED token in database
+      vendor.verificationToken = crypto
+        .createHash("sha256")
+        .update(verificationToken)
+        .digest("hex");
 
+      // Token expires after 24 hours
       vendor.verificationTokenExpire =
         new Date(
           Date.now() + 24 * 60 * 60 * 1000
         );
     }
-
-    // ==========================================
-    // SAVE VENDOR
-    // ==========================================
 
     await vendor.save();
 
@@ -207,6 +227,7 @@ export const approveVendor = async (req, res) => {
 
       if (!vendor.isVerified) {
         const clientUrl =
+          process.env.FRONTEND_URL ||
           process.env.CLIENT_URL ||
           "http://localhost:5173";
 
@@ -467,7 +488,11 @@ export const rejectVendor = async (req, res) => {
     // FIND VENDOR
     // ==========================================
 
-    const vendor = await Vendor.findById(id);
+    // Vendor is stored in User collection
+    const vendor = await User.findOne({
+      _id: id,
+      role: "vendor",
+    });
 
     if (!vendor) {
       return res.status(404).json({

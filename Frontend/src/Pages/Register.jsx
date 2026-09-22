@@ -116,6 +116,7 @@ function Register() {
       formData.append("email", email.trim());
       formData.append("phone", phone.trim());
       formData.append("password", password);
+      formData.append("confirmPassword", confirmPassword);
       formData.append("role", role);
       formData.append("address", address.trim());
       formData.append("city", city.trim());
