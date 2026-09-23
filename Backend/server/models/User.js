@@ -30,10 +30,20 @@ const userSchema = new mongoose.Schema(
       ],
     },
 
+    // ==========================
+    // Password
+    // ==========================
+    // Bcrypt disabled.
+    // Password is stored as plain text for testing.
+    //
+    // IMPORTANT:
+    // This is NOT recommended for production.
+    // ==========================
+
     password: {
       type: String,
       required: [true, "Password is required."],
-      minlength: [6, "Password must be at least 6 characters."],
+      minlength: [1, "Password is required."],
       select: false,
     },
 
@@ -55,7 +65,11 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: {
-        values: ["customer", "vendor", "admin"],
+        values: [
+          "customer",
+          "vendor",
+          "admin",
+        ],
         message:
           "Role must be either customer, vendor, or admin.",
       },
@@ -115,7 +129,11 @@ const userSchema = new mongoose.Schema(
     vendorStatus: {
       type: String,
       enum: {
-        values: ["pending", "approved", "rejected"],
+        values: [
+          "pending",
+          "approved",
+          "rejected",
+        ],
         message:
           "Vendor status must be pending, approved, or rejected.",
       },
@@ -175,12 +193,22 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// ==========================
 // Vendor filtering/index
+// ==========================
+
 userSchema.index({
   role: 1,
   vendorStatus: 1,
 });
 
-const User = mongoose.model("User", userSchema);
+// ==========================
+// User Model
+// ==========================
+
+const User = mongoose.model(
+  "User",
+  userSchema
+);
 
 export default User;

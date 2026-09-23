@@ -2,6 +2,10 @@ import mongoose from "mongoose";
 
 const adminSchema = new mongoose.Schema(
   {
+    // ==========================
+    // Admin Identity
+    // ==========================
+
     firstName: {
       type: String,
       required: [true, "First name is required."],
@@ -20,15 +24,32 @@ const adminSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
-      match: [/^\S+@\S+\.\S+$/, "Please provide a valid email address."],
+      match: [
+        /^\S+@\S+\.\S+$/,
+        "Please provide a valid email address.",
+      ],
     },
+
+    // ==========================
+    // Password
+    // ==========================
+    // Bcrypt disabled.
+    // Password is stored as plain text for testing.
+    //
+    // IMPORTANT:
+    // This is NOT recommended for production.
+    // ==========================
 
     password: {
       type: String,
       required: [true, "Password is required."],
-      minlength: [8, "Password must be at least 8 characters."],
+      minlength: [1, "Password is required."],
       select: false,
     },
+
+    // ==========================
+    // Admin Role
+    // ==========================
 
     role: {
       type: String,
@@ -37,18 +58,23 @@ const adminSchema = new mongoose.Schema(
       immutable: true,
     },
 
-    // Admins are trusted staff accounts created via the CLI
-    // seed script (see server/scripts/createAdmin.js), NOT
-    // through public self-registration — so they're verified
-    // by default, no email-verification step needed for them.
+    // ==========================
+    // Email Verification
+    // ==========================
+    // Admin accounts are created
+    // through the CLI seed script.
+    // Therefore admin is verified by default.
+    // ==========================
+
     isVerified: {
       type: Boolean,
       default: true,
     },
 
     // ==========================
-    // Password reset fields
+    // Password Reset Fields
     // ==========================
+
     resetPasswordToken: {
       type: String,
       select: false,
@@ -60,8 +86,9 @@ const adminSchema = new mongoose.Schema(
     },
 
     // ==========================
-    // Account lockout fields
+    // Account Lockout Fields
     // ==========================
+
     failedLoginAttempts: {
       type: Number,
       default: 0,
@@ -79,6 +106,13 @@ const adminSchema = new mongoose.Schema(
   }
 );
 
-const Admin = mongoose.model("Admin", adminSchema);
+// ==========================
+// Admin Model
+// ==========================
+
+const Admin = mongoose.model(
+  "Admin",
+  adminSchema
+);
 
 export default Admin;

@@ -1,14 +1,10 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
+// import bcrypt from "bcryptjs";
 
 import User from "../models/User.js";
 import Admin from "../models/Admin.js";
 import sendEmail from "../utils/sendEmail.js";
-
-// ======================================================
-// FRONTEND URL
-// ======================================================
 
 const getFrontendUrl = () => {
   const url =
@@ -20,17 +16,14 @@ const getFrontendUrl = () => {
 };
 
 // ======================================================
-// GENERATE JWT
+// Generate JWT
 // ======================================================
 
-const generateToken = (
-  id,
-  role
-) => {
+const generateToken = (user) => {
   return jwt.sign(
     {
-      id,
-      role,
+      id: user._id,
+      role: user.role,
     },
     process.env.JWT_SECRET,
     {
@@ -40,22 +33,18 @@ const generateToken = (
 };
 
 // ======================================================
-// GENERATE VERIFICATION TOKEN
+// Generate Verification Token
 // ======================================================
 
 const generateVerificationToken = () => {
-  return crypto
-    .randomBytes(32)
-    .toString("hex");
+  return crypto.randomBytes(32).toString("hex");
 };
 
 // ======================================================
-// HASH TOKEN
+// Hash Verification Token
 // ======================================================
 
-const hashToken = (
-  token
-) => {
+const hashToken = (token) => {
   return crypto
     .createHash("sha256")
     .update(token)
@@ -66,10 +55,7 @@ const hashToken = (
 // REGISTER
 // ======================================================
 
-export const register = async (
-  req,
-  res
-) => {
+export const register = async (req, res) => {
   try {
     const {
       firstName,
@@ -78,10 +64,10 @@ export const register = async (
       phone,
       password,
       confirmPassword,
-      role = "customer",
       address,
       city,
       country,
+      role,
       storeName,
       storeDescription,
       businessName,
@@ -89,350 +75,248 @@ export const register = async (
     } = req.body;
 
     // ------------------------------------------
-    // REQUIRED FIELDS
+    // Required fields
     // ------------------------------------------
 
     if (
-      !firstName?.trim() ||
-      !email?.trim() ||
-      !password
+      !firstName ||
+      !lastName ||
+      !email ||
+      !phone ||
+      !password ||
+      !confirmPassword
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "First name, email, and password are required.",
+        message: "Please fill all required fields.",
       });
     }
 
     // ------------------------------------------
-    // PASSWORD CONFIRMATION
+    // Password confirmation
     // ------------------------------------------
 
-    if (
-      password !== confirmPassword
-    ) {
+    if (password !== confirmPassword) {
       return res.status(400).json({
         success: false,
-        message:
-          "Passwords do not match.",
+        message: "Passwords do not match.",
       });
     }
 
     // ------------------------------------------
-    // VENDOR STORE NAME
+    // Vendor-specific required field
     // ------------------------------------------
 
-    if (
-      role === "vendor" &&
-      !storeName?.trim()
-    ) {
+    if (role === "vendor" && !storeName) {
       return res.status(400).json({
         success: false,
-        message:
-          "Store name is required for vendor accounts.",
+        message: "Store name is required for vendor accounts.",
       });
     }
 
     // ------------------------------------------
-    // NORMALIZE EMAIL
+    // Check existing user
     // ------------------------------------------
 
-    const normalizedEmail =
-      email
-        .trim()
-        .toLowerCase();
+    const existingUser = await User.findOne({
+      email: email.toLowerCase(),
+    });
 
-    // ------------------------------------------
-    // CHECK EXISTING USER + ADMIN
-    // ------------------------------------------
-
-    const [
-      existingUser,
-      existingAdmin,
-    ] = await Promise.all([
-      User.findOne({
-        email: normalizedEmail,
-      }),
-
-      Admin.findOne({
-        email: normalizedEmail,
-      }),
-    ]);
-
-    if (
-      existingUser ||
-      existingAdmin
-    ) {
-      return res.status(409).json({
+    if (existingUser) {
+      return res.status(400).json({
         success: false,
-        message:
-          "An account with this email already exists.",
+        message: "An account with this email already exists.",
       });
     }
 
     // ------------------------------------------
-    // HASH PASSWORD
+    // Validate role
     // ------------------------------------------
 
-    const hashedPassword =
-      await bcrypt.hash(
-        password,
-        12
-      );
+    const userRole =
+      role === "vendor" ? "vendor" : "customer";
 
     // ------------------------------------------
-    // USER DATA
+    // PASSWORD
+    // Bcrypt intentionally disabled.
+    // Password is stored as plain text.
+    // ------------------------------------------
+
+    // const hashedPassword = await bcrypt.hash(password, 12);
+
+    const plainPassword = password;
+
+    // ------------------------------------------
+    // Create user
     // ------------------------------------------
 
     const userData = {
-      firstName:
-        firstName.trim(),
+      firstName,
+      lastName,
+      email: email.toLowerCase(),
+      phone,
 
-      lastName:
-        lastName?.trim() || "",
+      // Bcrypt disabled:
+      // password: hashedPassword,
 
-      email:
-        normalizedEmail,
+      password: plainPassword,
 
-      password:
-        hashedPassword,
+      address,
+      city,
+      country,
+      role: userRole,
 
-      phone:
-        phone?.trim() || "",
+      isVerified: false,
 
-      profileImage:
-        req.file?.path || "",
-
-      role:
-        role === "vendor"
-          ? "vendor"
-          : "customer",
-
-      address:
-        address?.trim() || "",
-
-      city:
-        city?.trim() || "",
-
-      country:
-        country?.trim() || "",
+      profileImage: req.file
+        ? req.file.path
+        : null,
     };
 
-    // ==================================================
-    // VENDOR REGISTRATION
-    // ==================================================
+    // ------------------------------------------
+    // Vendor starts as pending
+    // ------------------------------------------
 
-    if (
-      role === "vendor"
-    ) {
-      userData.vendorStatus =
-        "pending";
+    if (userRole === "vendor") {
+      userData.vendorStatus = "pending";
 
-      userData.storeName =
-        storeName.trim();
-
+      userData.storeName = storeName || "";
       userData.storeDescription =
-        storeDescription?.trim() || "";
-
+        storeDescription || "";
       userData.businessName =
-        businessName?.trim() || "";
-
+        businessName || "";
       userData.businessAddress =
-        businessAddress?.trim() || "";
+        businessAddress || "";
 
-      userData.isVerified =
-        false;
+      // Vendor does NOT get verification
+      // email during registration.
+
+      userData.verificationToken = null;
+      userData.verificationTokenExpire = null;
+    }
+
+    // ------------------------------------------
+    // Customer verification token
+    // ------------------------------------------
+
+    if (userRole === "customer") {
+      const verificationToken =
+        generateVerificationToken();
 
       userData.verificationToken =
-        undefined;
+        hashToken(verificationToken);
 
       userData.verificationTokenExpire =
-        undefined;
-
-      const user =
-        await User.create(
-          userData
+        new Date(
+          Date.now() + 24 * 60 * 60 * 1000
         );
+
+      const user = await User.create(userData);
+
+      // ----------------------------------------
+      // Customer verification email
+      // ----------------------------------------
+
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        "http://localhost:5173";
+
+      const verificationUrl =
+        `${frontendUrl}/verify-email/${verificationToken}`;
+
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: "Verify Your Email",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+
+              <h2>Verify Your Email</h2>
+
+              <p>Hello ${user.firstName},</p>
+
+              <p>
+                Thank you for registering with ElectroMarket.
+              </p>
+
+              <p>
+                Please click the button below to verify your email address.
+              </p>
+
+              <div style="margin: 30px 0;">
+                <a
+                  href="${verificationUrl}"
+                  style="
+                    display: inline-block;
+                    padding: 12px 24px;
+                    background: #171717;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 6px;
+                  "
+                >
+                  Verify Email
+                </a>
+              </div>
+
+              <p>
+                This verification link will expire in 24 hours.
+              </p>
+
+            </div>
+          `,
+        });
+      } catch (emailError) {
+        console.error(
+          "Customer verification email error:",
+          emailError
+        );
+      }
 
       return res.status(201).json({
         success: true,
-        pendingApproval: true,
+        pendingApproval: false,
         message:
-          "Vendor registration submitted successfully. Please wait for admin approval.",
+          "Customer registered successfully. Please check your email to verify your account.",
         user: {
           id: user._id,
-          firstName:
-            user.firstName,
-          lastName:
-            user.lastName,
-          email:
-            user.email,
-          role:
-            user.role,
-          vendorStatus:
-            user.vendorStatus,
-          isVerified:
-            user.isVerified,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+          isVerified: user.isVerified,
         },
       });
     }
 
-    // ==================================================
-    // CUSTOMER REGISTRATION
-    // ==================================================
-
-    const verificationToken =
-      generateVerificationToken();
-
-    const hashedVerificationToken =
-      hashToken(
-        verificationToken
-      );
-
-    userData.isVerified =
-      false;
-
-    userData.verificationToken =
-      hashedVerificationToken;
-
-    userData.verificationTokenExpire =
-      Date.now() +
-      24 *
-        60 *
-        60 *
-        1000;
-
-    const user =
-      await User.create(
-        userData
-      );
-
     // ------------------------------------------
-    // CUSTOMER VERIFICATION URL
+    // Vendor registration
     // ------------------------------------------
 
-    const verificationUrl =
-      `${getFrontendUrl()}/verify-email/${verificationToken}`;
-
-    // ------------------------------------------
-    // SEND VERIFICATION EMAIL
-    // ------------------------------------------
-
-    try {
-      await sendEmail({
-        to: user.email,
-
-        subject:
-          "Verify your NextTech account",
-
-        html: `
-          <div
-            style="
-              font-family: Arial, sans-serif;
-              max-width: 600px;
-              margin: auto;
-              padding: 30px;
-            "
-          >
-
-            <h2
-              style="color:#171717;"
-            >
-              Verify your email address
-            </h2>
-
-            <p>
-              Hello
-              ${user.firstName},
-            </p>
-
-            <p>
-              Thank you for registering with NextTech.
-            </p>
-
-            <p>
-              Please click the button below
-              to verify your email address.
-            </p>
-
-            <p>
-              <a
-                href="${verificationUrl}"
-                style="
-                  display:inline-block;
-                  padding:12px 20px;
-                  background:#171717;
-                  color:#fff;
-                  text-decoration:none;
-                  border-radius:6px;
-                "
-              >
-                Verify Email
-              </a>
-            </p>
-
-            <p>
-              This verification link will expire
-              in 24 hours.
-            </p>
-
-          </div>
-        `,
-      });
-    } catch (
-      emailError
-    ) {
-      console.error(
-        "Customer verification email failed:",
-        emailError
-      );
-
-      await User.findByIdAndDelete(
-        user._id
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          "Registration could not be completed because the verification email could not be sent.",
-      });
-    }
-
-    // ------------------------------------------
-    // RESPONSE
-    // ------------------------------------------
+    const vendor = await User.create(userData);
 
     return res.status(201).json({
       success: true,
-      registered: true,
+      pendingApproval: true,
       message:
-        "Registration successful. Please check your email to verify your account.",
-
+        "Vendor registered successfully. Your account is pending admin approval.",
       user: {
-        id: user._id,
-        firstName:
-          user.firstName,
-        lastName:
-          user.lastName,
-        email:
-          user.email,
-        role:
-          user.role,
-        isVerified:
-          user.isVerified,
+        id: vendor._id,
+        firstName: vendor.firstName,
+        lastName: vendor.lastName,
+        email: vendor.email,
+        role: vendor.role,
+        vendorStatus: vendor.vendorStatus,
+        isVerified: vendor.isVerified,
       },
     });
   } catch (error) {
-    console.error(
-      "Register error:",
-      error
-    );
+    console.error("Register error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        error.message ||
-        "Registration failed. Please try again.",
+      message: "Server error during registration.",
+      error: error.message,
     });
   }
 };
@@ -441,270 +325,117 @@ export const register = async (
 // LOGIN
 // ======================================================
 
-export const login = async (
-  req,
-  res
-) => {
+export const login = async (req, res) => {
   try {
-    const {
-      email,
-      password,
-    } = req.body;
+    const { email, password } = req.body;
 
-    if (
-      !email?.trim() ||
-      !password
-    ) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message:
-          "Email and password are required.",
+        message: "Email and password are required.",
       });
     }
 
-    const normalizedEmail =
-      email
-        .trim()
-        .toLowerCase();
+    const normalizedEmail = email.toLowerCase();
 
-    // ==================================================
-    // ADMIN LOGIN
-    // ==================================================
+    // ------------------------------------------
+    // Pehle Admin collection check karein
+    // ------------------------------------------
 
-    const admin =
-      await Admin.findOne({
-        email:
-          normalizedEmail,
-      }).select(
-        "+password"
-      );
+    let account = await Admin.findOne({
+      email: normalizedEmail,
+    }).select("+password");
 
-    if (admin) {
-      const passwordMatch =
-        await bcrypt.compare(
-          password,
-          admin.password
-        );
+    // ------------------------------------------
+    // Agar admin nahi mila, User collection
+    // (customer / vendor) check karein
+    // ------------------------------------------
 
-      if (!passwordMatch) {
-        return res.status(401).json({
-          success: false,
-          message:
-            "Invalid email or password.",
-        });
-      }
-
-      const token =
-        generateToken(
-          admin._id,
-          "admin"
-        );
-
-      return res.status(200).json({
-        success: true,
-        token,
-
-        user: {
-          id: admin._id,
-          firstName:
-            admin.firstName,
-          lastName:
-            admin.lastName,
-          email:
-            admin.email,
-          role:
-            "admin",
-          isVerified:
-            true,
-        },
-      });
+    if (!account) {
+      account = await User.findOne({
+        email: normalizedEmail,
+      }).select("+password");
     }
 
-    // ==================================================
-    // CUSTOMER / VENDOR LOGIN
-    // ==================================================
-
-    const user =
-      await User.findOne({
-        email:
-          normalizedEmail,
-      }).select(
-        "+password +failedLoginAttempts +lockUntil"
-      );
-
-    if (!user) {
+    if (!account) {
       return res.status(401).json({
         success: false,
-        message:
-          "Invalid email or password.",
-      });
-    }
-
-    // ------------------------------------------
-    // ACCOUNT LOCK CHECK
-    // ------------------------------------------
-
-    if (
-      user.lockUntil &&
-      user.lockUntil > Date.now()
-    ) {
-      return res.status(423).json({
-        success: false,
-        message:
-          "Account temporarily locked. Please try again later.",
+        message: "Invalid email or password.",
       });
     }
 
     // ------------------------------------------
     // PASSWORD CHECK
+    // Bcrypt intentionally disabled.
     // ------------------------------------------
+
+    // const passwordMatch = await bcrypt.compare(
+    //   password,
+    //   account.password
+    // );
 
     const passwordMatch =
-      await bcrypt.compare(
-        password,
-        user.password
-      );
+      password === account.password;
 
     if (!passwordMatch) {
-      user.failedLoginAttempts =
-        (user.failedLoginAttempts ||
-          0) +
-        1;
-
-      if (
-        user.failedLoginAttempts >=
-        5
-      ) {
-        user.lockUntil =
-          Date.now() +
-          15 *
-            60 *
-            1000;
-
-        user.failedLoginAttempts =
-          0;
-      }
-
-      await user.save();
-
       return res.status(401).json({
         success: false,
-        message:
-          "Invalid email or password.",
+        message: "Invalid email or password.",
       });
     }
 
     // ------------------------------------------
-    // RESET LOGIN FAILURES
+    // Vendor approval check
     // ------------------------------------------
 
-    user.failedLoginAttempts =
-      0;
-
-    user.lockUntil =
-      null;
-
-    // ==================================================
-    // VENDOR APPROVAL
-    // ==================================================
-
     if (
-      user.role === "vendor"
+      account.role === "vendor" &&
+      account.vendorStatus !== "approved"
     ) {
-      if (
-        user.vendorStatus !==
-        "approved"
-      ) {
-        await user.save();
-
-        return res.status(403).json({
-          success: false,
-          pendingApproval: true,
-          notVerified: false,
-
-          message:
-            user.vendorStatus ===
-            "rejected"
-              ? "Your vendor application has been rejected."
-              : "Your vendor application is still waiting for admin approval.",
-        });
-      }
-    }
-
-    // ==================================================
-    // EMAIL VERIFICATION
-    // ==================================================
-
-    if (
-      !user.isVerified
-    ) {
-      await user.save();
-
       return res.status(403).json({
         success: false,
-        pendingApproval: false,
-        notVerified: true,
-
+        pendingApproval: true,
         message:
-          "Please verify your email address before logging in.",
+          "Your vendor account has not been approved by the admin yet.",
       });
     }
 
     // ------------------------------------------
-    // SAVE
+    // Email verification check
     // ------------------------------------------
 
-    await user.save();
+    if (!account.isVerified) {
+      return res.status(403).json({
+        success: false,
+        notVerified: true,
+        message:
+          "Please verify your email before logging in.",
+      });
+    }
 
-    // ------------------------------------------
-    // TOKEN
-    // ------------------------------------------
-
-    const token =
-      generateToken(
-        user._id,
-        user.role
-      );
-
-    // ------------------------------------------
-    // RESPONSE
-    // ------------------------------------------
+    const token = generateToken(account);
 
     return res.status(200).json({
       success: true,
+      message: "Login successful.",
       token,
-
       user: {
-        id: user._id,
-        firstName:
-          user.firstName,
-        lastName:
-          user.lastName,
-        email:
-          user.email,
-        role:
-          user.role,
-        isVerified:
-          user.isVerified,
-        vendorStatus:
-          user.vendorStatus,
-        profileImage:
-          user.profileImage,
-        storeName:
-          user.storeName,
+        id: account._id,
+        firstName: account.firstName,
+        lastName: account.lastName,
+        email: account.email,
+        role: account.role,
+        vendorStatus: account.vendorStatus,
+        isVerified: account.isVerified,
       },
     });
   } catch (error) {
-    console.error(
-      "Login error:",
-      error
-    );
+    console.error("Login error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        error.message ||
-        "Login failed. Please try again.",
+      message: "Server error during login.",
+      error: error.message,
     });
   }
 };
@@ -712,562 +443,438 @@ export const login = async (
 // ======================================================
 // VERIFY EMAIL
 // ======================================================
+//
+// FIX (2026):
+// Verification token ko turant null nahi kiya ja raha.
+// Isse duplicate verification request par
+// "invalid or expired" issue nahi aayega.
+// ======================================================
 
-export const verifyEmail =
-  async (
-    req,
-    res
-  ) => {
-    try {
-      const {
-        token,
-      } = req.params;
+export const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
 
-      if (!token) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Verification token is required.",
-        });
-      }
-
-      const cleanToken =
-        token.trim();
-
-      const hashedToken =
-        hashToken(
-          cleanToken
-        );
-
-      const user =
-        await User.findOne({
-          verificationToken:
-            hashedToken,
-
-          verificationTokenExpire:
-            {
-              $gt: Date.now(),
-            },
-        }).select(
-          "+verificationToken +verificationTokenExpire"
-        );
-
-      if (!user) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "This verification link is invalid or has expired.",
-        });
-      }
-
-      // ------------------------------------------
-      // VENDOR APPROVAL CHECK
-      // ------------------------------------------
-
-      if (
-        user.role ===
-          "vendor" &&
-        user.vendorStatus !==
-          "approved"
-      ) {
-        return res.status(403).json({
-          success: false,
-          message:
-            "Your vendor account must be approved by an admin before you can verify your email.",
-        });
-      }
-
-      // ------------------------------------------
-      // VERIFY
-      // ------------------------------------------
-
-      user.isVerified =
-        true;
-
-      user.verificationToken =
-        undefined;
-
-      user.verificationTokenExpire =
-        undefined;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "Email verified successfully. You can now log in.",
-      });
-    } catch (error) {
-      console.error(
-        "Verify email error:",
-        error
-      );
-
-      return res.status(500).json({
+    if (!token) {
+      return res.status(400).json({
         success: false,
-        message:
-          error.message ||
-          "Email verification failed.",
+        message: "Verification token is required.",
       });
     }
-  };
+
+    // ------------------------------------------
+    // Clean token
+    // ------------------------------------------
+
+    const cleanToken = token.trim();
+
+    // ------------------------------------------
+    // Hash token received from URL
+    // ------------------------------------------
+
+    const hashedToken = hashToken(cleanToken);
+
+    // ------------------------------------------
+    // Find user
+    // ------------------------------------------
+
+    const user = await User.findOne({
+      verificationToken: hashedToken,
+      verificationTokenExpire: {
+        $gt: new Date(),
+      },
+    }).select(
+      "+verificationToken +verificationTokenExpire"
+    );
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This verification link is invalid or has expired. Please request a new one.",
+      });
+    }
+
+    // ------------------------------------------
+    // Vendor must be approved
+    // ------------------------------------------
+
+    if (
+      user.role === "vendor" &&
+      user.vendorStatus !== "approved"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Your vendor account has not been approved yet.",
+      });
+    }
+
+    // ------------------------------------------
+    // Already verified
+    // ------------------------------------------
+
+    if (user.isVerified) {
+      return res.status(200).json({
+        success: true,
+        message: "Email is already verified.",
+      });
+    }
+
+    // ------------------------------------------
+    // Verify
+    // ------------------------------------------
+
+    user.isVerified = true;
+
+    // Token jaanbojh kar null nahi kiya ja raha.
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully.",
+    });
+  } catch (error) {
+    console.error("Verify email error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while verifying email.",
+      error: error.message,
+    });
+  }
+};
 
 // ======================================================
 // RESEND VERIFICATION
 // ======================================================
 
-export const resendVerification =
-  async (
-    req,
-    res
-  ) => {
-    try {
-      const {
-        email,
-      } = req.body;
+export const resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
 
-      if (
-        !email?.trim()
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Email is required.",
-        });
-      }
-
-      const normalizedEmail =
-        email
-          .trim()
-          .toLowerCase();
-
-      const user =
-        await User.findOne({
-          email:
-            normalizedEmail,
-        }).select(
-          "+verificationToken +verificationTokenExpire"
-        );
-
-      if (!user) {
-        return res.status(200).json({
-          success: true,
-          message:
-            "If an account with this email exists, a verification email has been sent.",
-        });
-      }
-
-      if (
-        user.isVerified
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "This email is already verified.",
-        });
-      }
-
-      // ------------------------------------------
-      // VENDOR APPROVAL
-      // ------------------------------------------
-
-      if (
-        user.role ===
-          "vendor" &&
-        user.vendorStatus !==
-          "approved"
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Your vendor application must be approved by an admin before verification email can be sent.",
-        });
-      }
-
-      // ------------------------------------------
-      // NEW TOKEN
-      // ------------------------------------------
-
-      const verificationToken =
-        generateVerificationToken();
-
-      user.verificationToken =
-        hashToken(
-          verificationToken
-        );
-
-      user.verificationTokenExpire =
-        Date.now() +
-        24 *
-          60 *
-          60 *
-          1000;
-
-      await user.save();
-
-      // ------------------------------------------
-      // URL
-      // ------------------------------------------
-
-      const verificationUrl =
-        `${getFrontendUrl()}/verify-email/${verificationToken}`;
-
-      // ------------------------------------------
-      // EMAIL
-      // ------------------------------------------
-
-      await sendEmail({
-        to: user.email,
-
-        subject:
-          "Verify your NextTech account",
-
-        html: `
-          <div
-            style="
-              font-family: Arial, sans-serif;
-              max-width: 600px;
-              margin: auto;
-              padding: 30px;
-            "
-          >
-
-            <h2>
-              Verify your email address
-            </h2>
-
-            <p>
-              Hello
-              ${user.firstName},
-            </p>
-
-            <p>
-              Please click the button below
-              to verify your email:
-            </p>
-
-            <p>
-              <a
-                href="${verificationUrl}"
-                style="
-                  display:inline-block;
-                  padding:12px 20px;
-                  background:#171717;
-                  color:#fff;
-                  text-decoration:none;
-                  border-radius:6px;
-                "
-              >
-                Verify Email
-              </a>
-            </p>
-
-            <p>
-              This link will expire in
-              24 hours.
-            </p>
-
-          </div>
-        `,
-      });
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "A new verification email has been sent.",
-      });
-    } catch (error) {
-      console.error(
-        "Resend verification error:",
-        error
-      );
-
-      return res.status(500).json({
+    if (!email) {
+      return res.status(400).json({
         success: false,
-        message:
-          error.message ||
-          "Could not resend verification email.",
+        message: "Email is required.",
       });
     }
-  };
+
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified.",
+      });
+    }
+
+    // Vendor cannot request verification
+    // until admin approval
+
+    if (
+      user.role === "vendor" &&
+      user.vendorStatus !== "approved"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Your vendor account must be approved by the admin first.",
+      });
+    }
+
+    // ------------------------------------------
+    // Generate NEW token
+    // ------------------------------------------
+
+    const verificationToken =
+      generateVerificationToken();
+
+    const hashedToken =
+      hashToken(verificationToken);
+
+    user.verificationToken = hashedToken;
+
+    user.verificationTokenExpire =
+      new Date(
+        Date.now() + 24 * 60 * 60 * 1000
+      );
+
+    await user.save();
+
+    // ------------------------------------------
+    // Verification URL
+    // ------------------------------------------
+
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      "http://localhost:5173";
+
+    const verificationUrl =
+      `${frontendUrl}/verify-email/${verificationToken}`;
+
+    // ------------------------------------------
+    // Send email
+    // ------------------------------------------
+
+    await sendEmail({
+      to: user.email,
+      subject: "Verify Your Email",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+
+          <h2>Verify Your Email</h2>
+
+          <p>Hello ${user.firstName},</p>
+
+          <p>
+            Please click the button below to verify your email address.
+          </p>
+
+          <div style="margin: 30px 0;">
+            <a
+              href="${verificationUrl}"
+              style="
+                display: inline-block;
+                padding: 12px 24px;
+                background: #171717;
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+              "
+            >
+              Verify Email
+            </a>
+          </div>
+
+          <p>
+            This link will expire in 24 hours.
+          </p>
+
+        </div>
+      `,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Verification email sent successfully.",
+    });
+  } catch (error) {
+    console.error(
+      "Resend verification error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while resending verification email.",
+      error: error.message,
+    });
+  }
+};
 
 // ======================================================
 // FORGOT PASSWORD
 // ======================================================
 
-export const forgotPassword =
-  async (
-    req,
-    res
-  ) => {
-    try {
-      const {
-        email,
-      } = req.body;
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
 
-      if (
-        !email?.trim()
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Email is required.",
-        });
-      }
-
-      const normalizedEmail =
-        email
-          .trim()
-          .toLowerCase();
-
-      const user =
-        await User.findOne({
-          email:
-            normalizedEmail,
-        }).select(
-          "+resetPasswordToken +resetPasswordExpire"
-        );
-
-      if (!user) {
-        return res.status(200).json({
-          success: true,
-          message:
-            "If an account exists for this email, a password reset link has been sent.",
-        });
-      }
-
-      // ------------------------------------------
-      // RESET TOKEN
-      // ------------------------------------------
-
-      const resetToken =
-        generateVerificationToken();
-
-      user.resetPasswordToken =
-        hashToken(
-          resetToken
-        );
-
-      user.resetPasswordExpire =
-        Date.now() +
-        15 *
-          60 *
-          1000;
-
-      await user.save();
-
-      // ------------------------------------------
-      // RESET URL
-      // ------------------------------------------
-
-      const resetUrl =
-        `${getFrontendUrl()}/reset-password/${resetToken}`;
-
-      // ------------------------------------------
-      // SEND EMAIL
-      // ------------------------------------------
-
-      await sendEmail({
-        to: user.email,
-
-        subject:
-          "Reset your NextTech password",
-
-        html: `
-          <div
-            style="
-              font-family: Arial, sans-serif;
-              max-width: 600px;
-              margin: auto;
-              padding: 30px;
-            "
-          >
-
-            <h2>
-              Reset your password
-            </h2>
-
-            <p>
-              Hello
-              ${user.firstName},
-            </p>
-
-            <p>
-              We received a request
-              to reset your password.
-            </p>
-
-            <p>
-              <a
-                href="${resetUrl}"
-                style="
-                  display:inline-block;
-                  padding:12px 20px;
-                  background:#171717;
-                  color:#fff;
-                  text-decoration:none;
-                  border-radius:6px;
-                "
-              >
-                Reset Password
-              </a>
-            </p>
-
-            <p>
-              This link will expire in
-              15 minutes.
-            </p>
-
-            <p>
-              If you did not request this,
-              you can safely ignore this email.
-            </p>
-
-          </div>
-        `,
-      });
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "If an account exists for this email, a password reset link has been sent.",
-      });
-    } catch (error) {
-      console.error(
-        "Forgot password error:",
-        error
-      );
-
-      return res.status(500).json({
+    if (!email) {
+      return res.status(400).json({
         success: false,
-        message:
-          error.message ||
-          "Could not process password reset request.",
+        message: "Email is required.",
       });
     }
-  };
+
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "No account found with this email.",
+      });
+    }
+
+    const resetToken = crypto
+      .randomBytes(32)
+      .toString("hex");
+
+    user.resetPasswordToken =
+      hashToken(resetToken);
+
+    user.resetPasswordExpire =
+      new Date(
+        Date.now() + 15 * 60 * 1000
+      );
+
+    await user.save();
+
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      "http://localhost:5173";
+
+    const resetUrl =
+      `${frontendUrl}/reset-password/${resetToken}`;
+
+    await sendEmail({
+      to: user.email,
+      subject: "Reset Your Password",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+
+          <h2>Reset Your Password</h2>
+
+          <p>Hello ${user.firstName},</p>
+
+          <p>
+            Click the button below to reset your password.
+          </p>
+
+          <div style="margin: 30px 0;">
+            <a
+              href="${resetUrl}"
+              style="
+                display: inline-block;
+                padding: 12px 24px;
+                background: #171717;
+                color: white;
+                text-decoration: none;
+                border-radius: 6px;
+              "
+            >
+              Reset Password
+            </a>
+          </div>
+
+          <p>
+            This link will expire in 15 minutes.
+          </p>
+
+        </div>
+      `,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Password reset email sent successfully.",
+    });
+  } catch (error) {
+    console.error(
+      "Forgot password error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while processing forgot password.",
+      error: error.message,
+    });
+  }
+};
 
 // ======================================================
 // RESET PASSWORD
 // ======================================================
 
-export const resetPassword =
-  async (
-    req,
-    res
-  ) => {
-    try {
-      const {
-        token,
-      } = req.params;
+export const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
 
-      const {
-        password,
-        confirmPassword,
-      } = req.body;
+    const {
+      password,
+      confirmPassword,
+    } = req.body;
 
-      if (!token) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Reset token is required.",
-        });
-      }
-
-      if (
-        !password ||
-        !confirmPassword
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Password and confirm password are required.",
-        });
-      }
-
-      if (
-        password !==
-        confirmPassword
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Passwords do not match.",
-        });
-      }
-
-      // ------------------------------------------
-      // HASH TOKEN
-      // ------------------------------------------
-
-      const hashedToken =
-        hashToken(token);
-
-      // ------------------------------------------
-      // FIND USER
-      // ------------------------------------------
-
-      const user =
-        await User.findOne({
-          resetPasswordToken:
-            hashedToken,
-
-          resetPasswordExpire:
-            {
-              $gt: Date.now(),
-            },
-        }).select(
-          "+resetPasswordToken +resetPasswordExpire +password"
-        );
-
-      if (!user) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "This password reset link is invalid or has expired.",
-        });
-      }
-
-      // ------------------------------------------
-      // NEW PASSWORD
-      // ------------------------------------------
-
-      user.password =
-        await bcrypt.hash(
-          password,
-          12
-        );
-
-      user.resetPasswordToken =
-        undefined;
-
-      user.resetPasswordExpire =
-        undefined;
-
-      user.failedLoginAttempts =
-        0;
-
-      user.lockUntil =
-        null;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "Password reset successful. You can now log in.",
-      });
-    } catch (error) {
-      console.error(
-        "Reset password error:",
-        error
-      );
-
-      return res.status(500).json({
+    if (!token) {
+      return res.status(400).json({
         success: false,
-        message:
-          error.message ||
-          "Could not reset password.",
+        message: "Reset token is required.",
       });
     }
-  };
+
+    if (!password || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password and confirm password are required.",
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match.",
+      });
+    }
+
+    const hashedToken = hashToken(token);
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: {
+        $gt: new Date(),
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This password reset link is invalid or has expired.",
+      });
+    }
+
+    // ------------------------------------------
+    // PASSWORD
+    // Bcrypt intentionally disabled.
+    // ------------------------------------------
+
+    // user.password = await bcrypt.hash(
+    //   password,
+    //   12
+    // );
+
+    user.password = password;
+
+    user.resetPasswordToken = null;
+    user.resetPasswordExpire = null;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Password reset successfully. You can now login.",
+    });
+  } catch (error) {
+    console.error(
+      "Reset password error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while resetting password.",
+      error: error.message,
+    });
+  }
+};
